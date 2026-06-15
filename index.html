@@ -1,0 +1,1076 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S9000 재고관리</title>
+<style>
+  :root{
+    --bg:#EEF1F4; --paper:#FFFFFF; --ink:#161B24; --muted:#69707D;
+    --line:#DDE2E8; --line2:#EAEDF1;
+    --teal:#176B66; --teal-soft:#E2F0EE;
+    --slate:#3A567E; --slate-soft:#E6ECF5;
+    --amber:#9A5A1B; --amber-soft:#F6ECDD;
+    --warn:#B3401A; --warn-soft:#FBE7DE;
+    --ok:#176B66;
+    --shadow:0 1px 2px rgba(20,27,36,.06),0 6px 18px rgba(20,27,36,.05);
+    --mono:"SF Mono",ui-monospace,"DejaVu Sans Mono","Menlo",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 16px 64px}
+
+  /* Header */
+  header{position:sticky;top:0;z-index:30;background:rgba(238,241,244,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+  .head-in{max-width:1080px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand b{font-size:18px;letter-spacing:-.01em}
+  .brand .sub{color:var(--muted);font-size:12px;letter-spacing:.04em}
+  .head-tools{margin-left:auto;display:flex;gap:8px}
+  .tabs{display:flex;gap:4px;max-width:1080px;margin:0 auto;padding:0 12px;overflow-x:auto}
+  .tab{appearance:none;border:0;background:transparent;color:var(--muted);font-size:13.5px;font-weight:600;
+       padding:11px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--teal)}
+  .tab:hover{color:var(--ink)}
+
+  /* generic */
+  .panel{display:none;padding-top:22px}
+  .panel.on{display:block}
+  h2.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:600;font-size:13px;
+       padding:8px 13px;border-radius:9px;cursor:pointer;transition:.12s}
+  .btn:hover{border-color:#C5CCD4}
+  .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+  .btn.primary:hover{background:#125853}
+  .btn.warn{background:var(--warn);border-color:var(--warn);color:#fff}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+  .btn.ghost:hover{color:var(--ink);background:var(--line2)}
+  .btn.sm{padding:5px 9px;font-size:12px;border-radius:7px}
+  input,select{font-family:inherit;font-size:14px;color:var(--ink);background:#fff;border:1px solid var(--line);
+       border-radius:8px;padding:8px 10px;width:100%}
+  input:focus,select:focus{outline:2px solid var(--teal-soft);border-color:var(--teal)}
+  label.fld{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* category chip */
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;letter-spacing:.01em}
+  .chip.p{background:var(--teal-soft);color:var(--teal)}
+  .chip.r{background:var(--slate-soft);color:var(--slate)}
+  .chip.a{background:var(--amber-soft);color:var(--amber)}
+
+  /* dashboard */
+  .value-card{padding:18px 20px;margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    background:linear-gradient(120deg,#13413E,#176B66);border:0;color:#fff}
+  .value-card .vlabel{font-size:13px;font-weight:600;opacity:.85}
+  .value-card .vmain{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:32px;font-weight:600;letter-spacing:-.02em}
+  .value-card .vsub{margin-left:auto;font-size:12.5px;opacity:.9;text-align:right;line-height:1.6}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+  .stat{padding:16px}
+  .stat .k{font-size:12px;color:var(--muted);font-weight:600}
+  .stat .v{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em;margin-top:2px}
+  .stat.alert .v{color:var(--warn)}
+  .alert-box{padding:0;overflow:hidden;margin-bottom:22px}
+  .alert-hd{display:flex;align-items:center;gap:9px;padding:14px 16px;border-bottom:1px solid var(--line2)}
+  .alert-hd .dot{width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
+  .alert-hd b{font-size:14px}
+  .alert-hd .count{margin-left:auto;font-family:var(--mono);font-weight:700;color:var(--warn)}
+
+  #itemsTable,#dashTable,#histTable,#alertBody{overflow-x:auto}
+  td.link{font-family:var(--mono);font-size:12px;color:var(--slate);white-space:nowrap}
+  td.link .ln{color:var(--ink);font-family:var(--sans);font-size:12.5px}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line)}
+  td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  th.r,td.r{text-align:right}
+  td.code{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  td .nm{font-weight:600}
+  td .spec{color:var(--muted);font-size:12px}
+
+  /* stock gauge — signature element */
+  .gauge{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+  .gauge .figs{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;min-width:78px}
+  .gauge .now{font-size:15px;font-weight:600}
+  .gauge .safe{font-size:11px;color:var(--muted)}
+  .bar{width:70px;height:8px;border-radius:999px;background:var(--line);overflow:hidden;position:relative;flex:none}
+  .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--ok)}
+  .bar.low i{background:var(--warn)}
+  .bar.out i{background:#7a7f88}
+  .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+  .tag.ok{color:var(--ok);background:var(--teal-soft)}
+  .tag.low{color:var(--warn);background:var(--warn-soft)}
+  .tag.out{color:#fff;background:#5a5f68}
+
+  /* color swatch */
+  .swatch{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
+  .dot-c{width:13px;height:13px;border-radius:50%;border:1px solid rgba(0,0,0,.2);flex:none}
+  .dot-white{background:#fff}
+  .dot-black{background:#1c1f24}
+  .dot-other{background:linear-gradient(135deg,#bfc4cc,#8a909a)}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:9px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .toolbar .grow{flex:1;min-width:160px}
+  .filters{display:flex;gap:6px}
+  .fbtn{font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer}
+  .fbtn[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* forms grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .form-card{padding:18px;margin-bottom:18px}
+  .form-card h3{margin:0 0 14px;font-size:15px}
+  .row-actions{display:flex;gap:6px;justify-content:flex-end}
+
+  /* modal */
+  .scrim{position:fixed;inset:0;background:rgba(20,27,36,.42);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .scrim.on{display:flex}
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.25);max-height:90vh;overflow:auto}
+  .modal .m-hd{padding:16px 18px;border-bottom:1px solid var(--line2);display:flex;align-items:center}
+  .modal .m-hd b{font-size:16px}
+  .modal .m-bd{padding:18px}
+  .modal .m-ft{padding:14px 18px;border-top:1px solid var(--line2);display:flex;gap:8px;justify-content:flex-end}
+
+  .empty{padding:40px 16px;text-align:center;color:var(--muted)}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+  .hist-line{font-size:12.5px;color:var(--muted)}
+  .hist-line b{color:var(--ink)}
+  .delta-in{color:var(--teal);font-weight:700;font-family:var(--mono)}
+  .delta-out{color:var(--warn);font-weight:700;font-family:var(--mono)}
+
+  .bom-line{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .bom-line select{flex:1}
+  .bom-line input{width:90px}
+
+  .banner{background:var(--amber-soft);color:var(--amber);font-size:12.5px;padding:8px 14px;text-align:center;font-weight:600}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;
+         padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;opacity:0;transition:.25s;z-index:80;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(max-width:720px){
+    .stat-row{grid-template-columns:1fr 1fr}
+    .grid3,.grid2{grid-template-columns:1fr}
+    .bar{display:none}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header>
+  <div class="head-in">
+    <div class="brand"><b>S9000 재고관리</b><span class="sub">GEALAN · 프로파일 / 보강재 / 부자재</span></div>
+    <div class="head-tools">
+      <button class="btn sm ghost" id="btnExport">현재고 내보내기</button>
+      <button class="btn sm ghost" id="btnSeed">S9000 자재 불러오기</button>
+      <button class="btn sm ghost" id="btnReset">초기화</button>
+    </div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="dash">대시보드</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="items">품목</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="io">입출고</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="bom">제품 · 생산</button>
+  </div>
+</header>
+
+<div id="storeBanner"></div>
+
+<div class="wrap">
+  <!-- DASHBOARD -->
+  <section class="panel on" id="panel-dash">
+    <div class="card value-card" id="valueCard"></div>
+    <div class="stat-row" id="statRow"></div>
+    <div class="card alert-box">
+      <div class="alert-hd"><span class="dot"></span><b>안전재고 미달 품목</b><span class="count" id="alertCount">0</span></div>
+      <div id="alertBody"></div>
+    </div>
+    <h2 class="sec">전체 현재고</h2>
+    <div class="card"><div id="dashTable"></div></div>
+  </section>
+
+  <!-- ITEMS -->
+  <section class="panel" id="panel-items">
+    <div class="toolbar">
+      <input class="grow" id="itemSearch" placeholder="품목코드 · 품명 검색">
+      <div class="filters" id="catFilter">
+        <button class="fbtn" data-cat="all" aria-pressed="true">전체</button>
+        <button class="fbtn" data-cat="프로파일" aria-pressed="false">프로파일</button>
+        <button class="fbtn" data-cat="보강재" aria-pressed="false">보강재</button>
+        <button class="fbtn" data-cat="부자재" aria-pressed="false">부자재</button>
+      </div>
+      <button class="btn" id="btnBulk">일괄 등록·수정</button>
+      <button class="btn primary" id="btnAddItem">+ 품목 등록</button>
+    </div>
+    <div class="toolbar" style="margin-top:-4px">
+      <span class="spec" style="font-size:12px;font-weight:600">색상</span>
+      <div class="filters" id="colorFilter">
+        <button class="fbtn" data-color="all" aria-pressed="true">전체</button>
+        <button class="fbtn" data-color="White" aria-pressed="false"><span class="dot-c dot-white" style="display:inline-block;vertical-align:-2px;margin-right:4px"></span>White</button>
+        <button class="fbtn" data-color="아크릴블랙" aria-pressed="false"><span class="dot-c dot-black" style="display:inline-block;vertical-align:-2px;margin-right:4px"></span>아크릴블랙</button>
+        <button class="fbtn" data-color="기타" aria-pressed="false">기타</button>
+      </div>
+    </div>
+    <div class="card"><div id="itemsTable"></div></div>
+  </section>
+
+  <!-- IN/OUT -->
+  <section class="panel" id="panel-io">
+    <div class="grid2">
+      <div class="card form-card">
+        <h3>입고</h3>
+        <label class="fld">품목</label>
+        <select id="inItem"></select>
+        <div class="grid2" style="margin-top:12px">
+          <div><label class="fld">수량</label><input id="inQty" type="number" min="1" value="1" class="num"></div>
+          <div><label class="fld">메모 (선택)</label><input id="inMemo" placeholder="예: 정기발주분"></div>
+        </div>
+        <div class="row-actions" style="margin-top:14px"><button class="btn primary" id="btnIn">입고 등록</button></div>
+      </div>
+      <div class="card form-card">
+        <h3>출고</h3>
+        <label class="fld">품목</label>
+        <select id="outItem"></select>
+        <div class="grid2" style="margin-top:12px">
+          <div><label class="fld">수량</label><input id="outQty" type="number" min="1" value="1" class="num"></div>
+          <div><label class="fld">메모 (선택)</label><input id="outMemo" placeholder="예: 불량 폐기"></div>
+        </div>
+        <div class="row-actions" style="margin-top:14px"><button class="btn warn" id="btnOut">출고 등록</button></div>
+      </div>
+    </div>
+    <h2 class="sec">최근 입출고 이력</h2>
+    <div class="card"><div id="histTable"></div></div>
+  </section>
+
+  <!-- BOM / PRODUCTION -->
+  <section class="panel" id="panel-bom">
+    <div class="toolbar">
+      <div class="grow"><h2 class="sec" style="margin:0">제품 BOM (창호 1개당 소요 자재)</h2></div>
+      <button class="btn primary" id="btnAddProd">+ 제품 등록</button>
+    </div>
+    <div id="prodList"></div>
+  </section>
+</div>
+
+<!-- Item modal -->
+<div class="scrim" id="itemScrim">
+  <div class="modal">
+    <div class="m-hd"><b id="itemModalTitle">품목 등록</b></div>
+    <div class="m-bd">
+      <div class="grid2">
+        <div><label class="fld">품목코드</label><input id="f_code" placeholder="예: S9000-FR"></div>
+        <div><label class="fld">카테고리</label>
+          <select id="f_cat"><option>프로파일</option><option>보강재</option><option>부자재</option></select></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label class="fld">품명</label><input id="f_name" placeholder="예: 창틀 프레임"></div>
+        <div><label class="fld">색상</label>
+          <select id="f_color"><option>White</option><option>아크릴블랙</option><option>기타</option></select></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label class="fld">연결 품목명 <span style="font-weight:400">(창호 프로그램)</span></label><input id="f_linkName" placeholder="예: F70 화이트"></div>
+        <div><label class="fld">연결 코드</label><input id="f_linkCode" placeholder="예: F70w"></div>
+      </div>
+      <div class="grid3" style="margin-top:12px">
+        <div><label class="fld">규격</label><input id="f_spec" placeholder="예: 6.5m"></div>
+        <div><label class="fld">단위</label><input id="f_unit" placeholder="본 / 개 / m"></div>
+        <div><label class="fld">안전재고</label><input id="f_safe" type="number" min="0" value="0" class="num"></div>
+      </div>
+      <div style="margin-top:12px"><label class="fld">현재고</label><input id="f_stock" type="number" min="0" value="0" class="num"></div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label class="fld">단가 (원/m)</label><input id="f_priceM" type="number" min="0" step="1" value="0" class="num" placeholder="미터당 단가"></div>
+        <div><label class="fld">본당 길이 (m)</label><input id="f_lenM" type="number" min="0" step="0.1" value="6" class="num"></div>
+      </div>
+      <div id="priceCalc" class="spec" style="font-size:12.5px;margin-top:8px;line-height:1.6"></div>
+      <label class="fld" style="margin-top:16px">도면 · 단면도 (선택)</label>
+      <div id="iDrawPreview"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <label class="btn sm" style="cursor:pointer">단면도 이미지 선택
+          <input id="i_draw" type="file" accept="image/*" hidden>
+        </label>
+        <button class="btn sm ghost" id="btnIDrawRemove" style="color:var(--warn);display:none">도면 삭제</button>
+        <span class="spec" style="font-size:11.5px">JPG · PNG (자동 축소 저장)</span>
+      </div>
+    </div>
+    <div class="m-ft">
+      <button class="btn ghost" data-close>취소</button>
+      <button class="btn primary" id="btnSaveItem">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk import/edit modal -->
+<div class="scrim" id="bulkScrim">
+  <div class="modal">
+    <div class="m-hd"><b>품목 일괄 등록 · 수정</b></div>
+    <div class="m-bd">
+      <div class="spec" style="font-size:12.5px;line-height:1.65;margin-bottom:10px">
+        엑셀·시트에서 복사해 붙여넣으세요 (탭 또는 쉼표 구분).<br>
+        열 순서: <b>코드, 품명, 구분, 색상, 규격, 단위, 안전재고, 단가(원/m), 본길이</b> — 코드만 필수, 나머지는 비우면 기존 값 유지.<br>
+        첫 줄에 머리글(코드·품명 등)이 있으면 자동 인식. <b>코드가 같으면 수정, 없으면 신규 추가</b>됩니다.
+      </div>
+      <textarea id="bulkText" rows="9" placeholder="600200Q&#9;프레임 화이트 82.5&#9;프로파일&#9;White&#9;6M&#9;본&#9;20" style="width:100%;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical"></textarea>
+      <div id="bulkPreview" class="spec" style="font-size:12.5px;margin-top:8px"></div>
+    </div>
+    <div class="m-ft">
+      <button class="btn ghost" data-close>취소</button>
+      <button class="btn primary" id="btnBulkApply">적용</button>
+    </div>
+  </div>
+</div>
+
+<!-- Product modal -->
+<div class="scrim" id="prodScrim">
+  <div class="modal">
+    <div class="m-hd"><b id="prodModalTitle">제품 등록</b></div>
+    <div class="m-bd">
+      <label class="fld">제품명</label><input id="p_name" placeholder="예: 이중창 1200×1500">
+      <label class="fld" style="margin-top:14px">구성 자재 (창호 1개 기준 소요량)</label>
+      <div id="bomLines"></div>
+      <button class="btn sm" id="btnAddBomLine" style="margin-top:6px">+ 자재 추가</button>
+      <label class="fld" style="margin-top:16px">도면 (선택)</label>
+      <div id="drawZone">
+        <div id="drawPreview"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <label class="btn sm" style="cursor:pointer">도면 이미지 선택
+            <input id="p_draw" type="file" accept="image/*" hidden>
+          </label>
+          <button class="btn sm ghost" id="btnDrawRemove" style="color:var(--warn);display:none">도면 삭제</button>
+          <span class="spec" style="font-size:11.5px">JPG · PNG (자동 축소 저장)</span>
+        </div>
+      </div>
+    </div>
+    <div class="m-ft">
+      <button class="btn ghost" data-close>취소</button>
+      <button class="btn primary" id="btnSaveProd">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Produce modal -->
+<div class="scrim" id="produceScrim">
+  <div class="modal">
+    <div class="m-hd"><b>생산 등록</b></div>
+    <div class="m-bd">
+      <div id="produceName" style="font-weight:600;font-size:15px;margin-bottom:12px"></div>
+      <label class="fld">생산 수량 (창호 개수)</label>
+      <input id="produceQty" type="number" min="1" value="1" class="num">
+      <div id="producePreview" style="margin-top:16px"></div>
+    </div>
+    <div class="m-ft">
+      <button class="btn ghost" data-close>취소</button>
+      <button class="btn primary" id="btnConfirmProduce">차감 확정</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Drawing lightbox -->
+<div class="scrim" id="lightScrim" style="background:rgba(15,20,28,.86)">
+  <div style="max-width:94vw;max-height:92vh;text-align:center">
+    <div id="lightTitle" style="color:#fff;font-weight:600;margin-bottom:10px"></div>
+    <img id="lightImg" style="max-width:94vw;max-height:80vh;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.5);background:#fff">
+    <div style="margin-top:12px"><button class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+
+<script>
+/* ---------- storage layer (window.storage with in-memory fallback) ---------- */
+const HAS_STORE = !!(window.storage && window.storage.get);
+const HAS_LS = (()=>{ try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; }catch(e){ return false; } })();
+const mem = {};
+async function sGet(key){
+  if(HAS_STORE){ try{ const r=await window.storage.get(key); return r?r.value:null; }catch(e){ return null; } }
+  if(HAS_LS){ return localStorage.getItem(key); }
+  return mem[key] ?? null;
+}
+async function sSet(key,val){
+  if(HAS_STORE){ try{ await window.storage.set(key,val,false); return true; }catch(e){ console.error('save failed',e); return false; } }
+  if(HAS_LS){ try{ localStorage.setItem(key,val); return true; }catch(e){ console.error('save failed',e); return false; } }
+  mem[key]=val; return true;
+}
+async function sDel(key){
+  if(HAS_STORE){ try{ await window.storage.delete(key,false); }catch(e){} return; }
+  if(HAS_LS){ try{ localStorage.removeItem(key); }catch(e){} return; }
+  delete mem[key];
+}
+const drawKey = id => 'inv:draw:'+id;
+const itemDrawKey = id => 'inv:idraw:'+id;
+
+const K_ITEMS='inv:items', K_PROD='inv:products', K_HIST='inv:history';
+let items=[], products=[], history=[];
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+async function loadAll(){
+  items   = JSON.parse(await sGet(K_ITEMS) || '[]');
+  products= JSON.parse(await sGet(K_PROD)  || '[]');
+  history = JSON.parse(await sGet(K_HIST)  || '[]');
+}
+async function saveItems(){ await sSet(K_ITEMS, JSON.stringify(items)); }
+async function persistProducts(){ await sSet(K_PROD, JSON.stringify(products)); }
+async function saveHist(){  history=history.slice(0,500); await sSet(K_HIST, JSON.stringify(history)); }
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const catClass=c=> c==='프로파일'?'p': c==='보강재'?'r':'a';
+function colorOf(i){
+  if(i.color) return i.color==='Deep Black' ? '아크릴블랙' : i.color;
+  const n=(i.name||'').toLowerCase();
+  if(n.includes('deep black')||n.includes('아크릴블랙')||n.includes('블랙')||n.includes('black')) return '아크릴블랙';
+  if(n.includes('white')||n.includes('화이트')) return 'White';
+  return '기타';
+}
+function swatchHTML(i){
+  const c=colorOf(i);
+  const dot = c==='White'?'dot-white': c==='아크릴블랙'?'dot-black':'dot-other';
+  return `<span class="swatch"><span class="dot-c ${dot}"></span>${esc(c)}</span>`;
+}
+function itemById(id){ return items.find(i=>i.id===id); }
+function esc(s){ return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function fmt(n){ return Number(n).toLocaleString('ko-KR'); }
+function fmtWon(n){ return Math.round(Number(n)||0).toLocaleString('ko-KR')+'원'; }
+function unitCost(i){ return (Number(i.priceM)||0) * (i.lengthM!=null?Number(i.lengthM):6); } // 본(단위)당 단가 = 원/m × 본길이
+function itemValue(i){ return (Number(i.stock)||0) * unitCost(i); }                              // 재고 금액 = 현재고 × 단위당 단가
+function totalValue(){ return items.reduce((s,i)=>s+itemValue(i),0); }
+function status(i){ if(i.stock<=0) return 'out'; if(i.stock < i.safety) return 'low'; return 'ok'; }
+function statusKo(s){ return s==='out'?'품절': s==='low'?'부족':'정상'; }
+
+let toastT;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),1900); }
+
+/* ---------- image resize (for product drawings) ---------- */
+function resizeImage(file, maxSide, quality){
+  return new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>reject(new Error('read'));
+    fr.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('decode'));
+      img.onload=()=>{
+        let {width:w,height:h}=img;
+        const scale=Math.min(1, maxSide/Math.max(w,h));
+        w=Math.round(w*scale); h=Math.round(h*scale);
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',quality));
+      };
+      img.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ---------- render: stock gauge ---------- */
+function gaugeHTML(i){
+  const st=status(i);
+  const cap=Math.max(i.safety*2, i.stock, 1);
+  const pct=Math.max(0,Math.min(100, (i.stock/cap)*100));
+  const barCls = st==='out'?'out': st==='low'?'low':'';
+  return `<div class="gauge">
+      <div class="bar ${barCls}"><i style="width:${pct}%"></i></div>
+      <div class="figs">
+        <div class="now">${fmt(i.stock)}<span style="font-size:11px;color:var(--muted)"> ${esc(i.unit||'')}</span></div>
+        <div class="safe">안전 ${fmt(i.safety)}</div>
+      </div>
+    </div>`;
+}
+
+/* ---------- DASHBOARD ---------- */
+function renderDash(){
+  const low = items.filter(i=>status(i)!=='ok');
+  const byCat = c=>items.filter(i=>i.category===c).length;
+  const byColor = c=>items.filter(i=>colorOf(i)===c).length;
+  const valOf=c=>items.filter(i=>colorOf(i)===c).reduce((s,i)=>s+itemValue(i),0);
+  const priced=items.filter(i=>i.priceM>0).length;
+  $('#valueCard').innerHTML = `
+    <div>
+      <div class="vlabel">총 재고 금액</div>
+      <div class="vmain">${fmtWon(totalValue())}</div>
+    </div>
+    <div class="vsub">
+      White ${fmtWon(valOf('White'))}<br>
+      아크릴블랙 ${fmtWon(valOf('아크릴블랙'))}<br>
+      <span style="opacity:.75">단가 입력 품목 ${priced} / ${items.length}</span>
+    </div>`;
+  $('#statRow').innerHTML = `
+    <div class="card stat"><div class="k">전체 품목</div><div class="v num">${items.length}</div></div>
+    <div class="card stat ${low.length?'alert':''}"><div class="k">재고 부족</div><div class="v num">${low.length}</div></div>
+    <div class="card stat"><div class="k"><span class="dot-c dot-white" style="display:inline-block;vertical-align:-1px;margin-right:4px"></span>White</div><div class="v num">${byColor('White')}</div></div>
+    <div class="card stat"><div class="k"><span class="dot-c dot-black" style="display:inline-block;vertical-align:-1px;margin-right:4px"></span>아크릴블랙</div><div class="v num">${byColor('아크릴블랙')}</div></div>`;
+  $('#alertCount').textContent = low.length;
+  if(!low.length){
+    $('#alertBody').innerHTML = `<div class="empty"><b>모든 품목이 안전재고 이상입니다</b>부족한 품목이 생기면 여기에 표시됩니다.</div>`;
+  }else{
+    low.sort((a,b)=>(a.stock-a.safety)-(b.stock-b.safety));
+    $('#alertBody').innerHTML = `<table><thead><tr>
+        <th>품목</th><th>구분</th><th class="r">현재고</th><th class="r">안전</th><th class="r">부족분</th><th></th>
+      </tr></thead><tbody>` + low.map(i=>{
+      const need = Math.max(0, i.safety - i.stock);
+      return `<tr>
+        <td><div class="nm">${esc(i.name)}</div><div class="spec code">${esc(i.code)} · ${esc(i.spec||'')}</div></td>
+        <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
+        <td class="r num">${fmt(i.stock)}</td>
+        <td class="r num">${fmt(i.safety)}</td>
+        <td class="r num" style="color:var(--warn);font-weight:700">${need?('+'+fmt(need)):'-'}</td>
+        <td class="r"><span class="tag ${status(i)}">${statusKo(status(i))}</span></td>
+      </tr>`;
+    }).join('') + `</tbody></table>`;
+  }
+  // full stock table — 색상별로 묶어서 표시
+  if(!items.length){
+    $('#dashTable').innerHTML = emptyItems();
+  }else{
+    const order={'White':0,'아크릴블랙':1,'기타':2};
+    const sorted=[...items].sort((a,b)=>
+      (order[colorOf(a)]??9)-(order[colorOf(b)]??9) ||
+      a.category.localeCompare(b.category) || a.code.localeCompare(b.code));
+    $('#dashTable').innerHTML = `<table><thead><tr>
+      <th>품목코드</th><th>품명</th><th>구분</th><th>색상</th><th class="r">재고 / 안전</th><th class="r">금액</th><th class="r">상태</th>
+    </tr></thead><tbody>`+ sorted.map(i=>`<tr>
+        <td class="code">${esc(i.code)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" title="단면도 크게 보기" style="width:38px;height:38px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:none">`:''}
+            <div><div class="nm">${esc(i.name)}</div><div class="spec">${esc(i.spec||'')}</div></div>
+          </div>
+        </td>
+        <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
+        <td>${swatchHTML(i)}</td>
+        <td>${gaugeHTML(i)}</td>
+        <td class="r num">${i.priceM?fmtWon(itemValue(i)):'-'}</td>
+        <td class="r"><span class="tag ${status(i)}">${statusKo(status(i))}</span></td>
+      </tr>`).join('') + `</tbody></table>`;
+  }
+}
+
+/* ---------- ITEMS ---------- */
+let curCat='all', curSearch='', curColor='all';
+function emptyItems(){ return `<div class="empty"><b>등록된 품목이 없습니다</b>우측 상단 "품목 등록" 또는 "예시 데이터"로 시작하세요.</div>`; }
+function renderItems(){
+  let list=items.filter(i=> (curCat==='all'||i.category===curCat) && (curColor==='all'||colorOf(i)===curColor));
+  if(curSearch){ const q=curSearch.toLowerCase();
+    list=list.filter(i=>(i.code+i.name+(i.spec||'')).toLowerCase().includes(q)); }
+  if(!items.length){ $('#itemsTable').innerHTML=emptyItems(); return; }
+  if(!list.length){ $('#itemsTable').innerHTML=`<div class="empty"><b>검색 결과가 없습니다</b></div>`; return; }
+  $('#itemsTable').innerHTML = `<table><thead><tr>
+      <th>품목코드</th><th>품명 / 규격</th><th>품목(연결)</th><th>코드(연결)</th><th>구분</th><th>색상</th><th>단위</th><th class="r">현재고</th><th class="r">안전재고</th><th class="r">단가(원/m)</th><th class="r">금액</th><th></th>
+    </tr></thead><tbody>`+ list.map(i=>`<tr>
+      <td class="code">${esc(i.code)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" title="단면도 크게 보기" style="width:40px;height:40px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:none">`:''}
+          <div><div class="nm">${esc(i.name)}</div><div class="spec">${esc(i.spec||'')}</div></div>
+        </div>
+      </td>
+      <td class="link"><span class="ln">${i.linkName?esc(i.linkName):'<span style="color:var(--muted)">-</span>'}</span></td>
+      <td class="link">${i.linkCode?esc(i.linkCode):'<span style="color:var(--muted)">-</span>'}</td>
+      <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
+      <td>${swatchHTML(i)}</td>
+      <td>${esc(i.unit||'')}</td>
+      <td class="r num" style="font-weight:600">${fmt(i.stock)}</td>
+      <td class="r num">${fmt(i.safety)}</td>
+      <td class="r num">${i.priceM?fmt(i.priceM):'-'}</td>
+      <td class="r num" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</td>
+      <td class="r"><div class="row-actions">
+        <button class="btn sm ghost" data-edit="${i.id}">수정</button>
+        <button class="btn sm ghost" data-del="${i.id}" style="color:var(--warn)">삭제</button>
+      </div></td>
+    </tr>`).join('')
+    + `<tr style="background:var(--line2)"><td colspan="10" class="r" style="font-weight:700">합계 금액</td><td class="r num" style="font-weight:700;color:var(--teal)">${fmtWon(list.reduce((s,i)=>s+itemValue(i),0))}</td><td></td></tr>`
+    + `</tbody></table>`;
+}
+
+/* ---------- IN/OUT ---------- */
+function fillItemSelects(){
+  const opts = items.map(i=>`<option value="${i.id}">[${i.category}] ${esc(i.code)} · ${esc(i.name)} (재고 ${fmt(i.stock)})</option>`).join('');
+  const ph = `<option value="">— 품목 선택 —</option>`;
+  $('#inItem').innerHTML = ph+opts;
+  $('#outItem').innerHTML = ph+opts;
+}
+function renderHist(){
+  if(!history.length){ $('#histTable').innerHTML=`<div class="empty"><b>입출고 이력이 없습니다</b></div>`; return; }
+  $('#histTable').innerHTML = `<table><thead><tr>
+      <th>일시</th><th>구분</th><th>내용</th><th class="r">변동</th>
+    </tr></thead><tbody>`+ history.slice(0,100).map(h=>{
+      const d=new Date(h.ts);
+      const ds=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const typeKo = h.type==='in'?'입고':h.type==='out'?'출고':'생산';
+      const lines = h.lines.map(l=>{
+        const cls = l.delta>0?'delta-in':'delta-out';
+        return `<div class="hist-line"><b>${esc(l.name)}</b> <span class="code">${esc(l.code)}</span> <span class="${cls}">${l.delta>0?'+':''}${fmt(l.delta)}</span></div>`;
+      }).join('');
+      const sum = h.lines.reduce((s,l)=>s+l.delta,0);
+      return `<tr>
+        <td class="code" style="white-space:nowrap">${ds}</td>
+        <td><span class="tag ${h.type==='in'?'ok':'low'}">${typeKo}</span></td>
+        <td>${lines}${h.memo?`<div class="hist-line" style="margin-top:2px">메모: ${esc(h.memo)}</div>`:''}</td>
+        <td class="r num ${sum>=0?'delta-in':'delta-out'}">${sum>0?'+':''}${fmt(sum)}</td>
+      </tr>`;
+    }).join('') + `</tbody></table>`;
+}
+
+async function doInOut(type){
+  const sel = type==='in'?$('#inItem'):$('#outItem');
+  const qtyEl = type==='in'?$('#inQty'):$('#outQty');
+  const memoEl= type==='in'?$('#inMemo'):$('#outMemo');
+  const id=sel.value, qty=parseInt(qtyEl.value,10);
+  if(!id){ toast('품목을 선택하세요'); return; }
+  if(!(qty>0)){ toast('수량을 확인하세요'); return; }
+  const it=itemById(id);
+  if(type==='out' && qty>it.stock){
+    if(!confirm(`현재고(${fmt(it.stock)})보다 많은 출고입니다. 진행할까요? 재고는 0 이하가 됩니다.`)) return;
+  }
+  const delta = type==='in'?qty:-qty;
+  it.stock += delta;
+  history.unshift({id:uid(),ts:Date.now(),type,memo:memoEl.value.trim(),
+    lines:[{itemId:it.id,code:it.code,name:it.name,delta}]});
+  await saveItems(); await saveHist();
+  qtyEl.value=1; memoEl.value='';
+  renderAll();
+  toast(`${it.name} ${type==='in'?'입고':'출고'} 완료`);
+}
+
+/* ---------- BOM / PRODUCTS ---------- */
+function renderProducts(){
+  if(!products.length){
+    $('#prodList').innerHTML=`<div class="card"><div class="empty"><b>등록된 제품이 없습니다</b>창호 제품과 1개당 소요 자재를 등록하면, 생산 수량만 입력해도 재고가 자동 차감됩니다.</div></div>`;
+    return;
+  }
+  $('#prodList').innerHTML = products.map(p=>{
+    const rows = p.bom.map(b=>{
+      const it=itemById(b.itemId);
+      if(!it) return `<tr><td colspan="3" class="spec">삭제된 품목</td></tr>`;
+      return `<tr>
+        <td><span class="chip ${catClass(it.category)}">${it.category}</span> ${esc(it.name)} <span class="code">${esc(it.code)}</span></td>
+        <td class="r num">${fmt(b.qty)} ${esc(it.unit||'')}</td>
+        <td class="r spec num">재고 ${fmt(it.stock)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line2)">
+        ${p.thumb?`<img src="${p.thumb}" data-view="${p.id}" title="도면 크게 보기" style="width:46px;height:46px;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin-right:12px;cursor:pointer;flex:none">`:''}
+        <div>
+          <b style="font-size:15px">${esc(p.name)}</b>
+          <span class="spec" style="margin-left:8px">자재 ${p.bom.length}종</span>
+          ${p.thumb?`<span class="chip p" style="margin-left:6px">도면</span>`:''}
+        </div>
+        <div class="row-actions" style="margin-left:auto">
+          <button class="btn sm primary" data-produce="${p.id}">생산 등록</button>
+          <button class="btn sm ghost" data-pedit="${p.id}">수정</button>
+          <button class="btn sm ghost" data-pdel="${p.id}" style="color:var(--warn)">삭제</button>
+        </div>
+      </div>
+      <table><tbody>${rows||'<tr><td class="spec" style="padding:14px 16px">구성 자재 없음</td></tr>'}</tbody></table>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- modals: item ---------- */
+let editingItem=null;
+let itemDraw={changed:false, thumb:null, full:null};
+function renderItemDrawPreview(){
+  const t=itemDraw.thumb;
+  $('#iDrawPreview').innerHTML = t
+    ? `<img src="${t}" style="max-width:100%;max-height:170px;border-radius:8px;border:1px solid var(--line);display:block;background:#fff">`
+    : `<div class="spec" style="font-size:12px">첨부된 도면 없음</div>`;
+  $('#btnIDrawRemove').style.display = t ? '' : 'none';
+}
+function priceCalcPreview(){
+  const priceM=Number($('#f_priceM').value)||0, len=Number($('#f_lenM').value)||0, stock=Number($('#f_stock').value)||0;
+  const unit=priceM*len, amt=unit*stock;
+  $('#priceCalc').innerHTML = priceM>0
+    ? `단위당 단가 <b>${fmtWon(unit)}</b> (= ${fmt(priceM)}원/m × ${fmt(len)}m) · 재고 금액 <b style="color:var(--teal)">${fmtWon(amt)}</b> (현재고 ${fmt(stock)} × 단위단가)`
+    : `단가를 입력하면 단위당 단가와 재고 금액이 계산됩니다.`;
+}
+function openItemModal(it){
+  editingItem = it||null;
+  $('#itemModalTitle').textContent = it?'품목 수정':'품목 등록';
+  $('#f_code').value=it?it.code:''; $('#f_cat').value=it?it.category:'프로파일';
+  $('#f_name').value=it?it.name:''; $('#f_spec').value=it?(it.spec||''):'';
+  $('#f_color').value=it?colorOf(it):'White';
+  $('#f_linkName').value=it?(it.linkName||''):''; $('#f_linkCode').value=it?(it.linkCode||''):'';
+  $('#f_unit').value=it?(it.unit||''):'본'; $('#f_safe').value=it?it.safety:0; $('#f_stock').value=it?it.stock:0;
+  $('#f_priceM').value=it?(it.priceM||0):0; $('#f_lenM').value=it?(it.lengthM!=null?it.lengthM:6):6;
+  itemDraw={changed:false, thumb: it?(it.thumb||null):null, full:null};
+  $('#i_draw').value='';
+  renderItemDrawPreview(); priceCalcPreview();
+  $('#itemScrim').classList.add('on'); $('#f_code').focus();
+}
+async function saveItem(){
+  const code=$('#f_code').value.trim(), name=$('#f_name').value.trim();
+  if(!code||!name){ toast('품목코드와 품명은 필수입니다'); return; }
+  const data={code,name,category:$('#f_cat').value,color:$('#f_color').value,spec:$('#f_spec').value.trim(),
+    linkName:$('#f_linkName').value.trim(),linkCode:$('#f_linkCode').value.trim(),
+    unit:$('#f_unit').value.trim(),safety:Math.max(0,parseInt($('#f_safe').value||0,10)),
+    stock:Math.max(0,parseInt($('#f_stock').value||0,10)),
+    priceM:Math.max(0,Number($('#f_priceM').value)||0),lengthM:Math.max(0,Number($('#f_lenM').value)||0)};
+  let it;
+  if(editingItem){ Object.assign(editingItem,data); it=editingItem; }
+  else{ it={id:uid(),...data}; items.push(it); }
+  if(itemDraw.changed){
+    if(itemDraw.full){
+      const ok=await sSet(itemDrawKey(it.id), itemDraw.full);
+      if(ok){ it.thumb=itemDraw.thumb; }
+      else { toast('도면 저장 실패 (용량 초과 가능)'); }
+    } else { await sDel(itemDrawKey(it.id)); delete it.thumb; }
+  }
+  await saveItems(); $('#itemScrim').classList.remove('on'); renderAll(); toast('저장되었습니다');
+}
+
+/* ---------- bulk import / edit ---------- */
+const BULK_COLS=['code','name','category','color','spec','unit','safety','priceM','lengthM','linkName','linkCode'];
+const BULK_HEAD={'코드':'code','품번':'code','품목코드':'code','품명':'name','명칭':'name','구분':'category','카테고리':'category','색상':'color','규격':'spec','단위':'unit','안전재고':'safety','안전':'safety','단가':'priceM','단가(원/m)':'priceM','단가(원/M)':'priceM','원/m':'priceM','원/M':'priceM','미터당단가':'priceM','본길이':'lengthM','본당길이':'lengthM','길이':'lengthM','품목(연결)':'linkName','연결품목':'linkName','품목연결':'linkName','코드(연결)':'linkCode','연결코드':'linkCode','코드연결':'linkCode'};
+function parseBulk(text){
+  const lines=text.split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim());
+  if(!lines.length) return [];
+  const split=l=>(l.includes('\t')?l.split('\t'):l.split(',')).map(s=>s.trim());
+  let rows=lines.map(split);
+  let mapping=BULK_COLS, data=rows;
+  const head=rows[0].map(h=>h.replace(/\s/g,''));
+  if(head.some(h=>BULK_HEAD[h])){ mapping=head.map(h=>BULK_HEAD[h]||null); data=rows.slice(1); }
+  return data.map(r=>{ const o={}; r.forEach((v,idx)=>{ const k=mapping[idx]; if(k&&v!=='') o[k]=v; }); return o; })
+             .filter(o=>o.code);
+}
+function bulkCounts(parsed){
+  const codes=new Set(items.map(i=>i.code)); let added=0,updated=0;
+  parsed.forEach(o=> codes.has(o.code)?updated++:added++);
+  return {added,updated};
+}
+function applyBulk(parsed){
+  let added=0,updated=0;
+  const validCat=c=>['프로파일','보강재','부자재'].includes(c);
+  const num=v=>{ if(v===undefined) return undefined; const n=parseFloat(String(v).replace(/[^\d.]/g,'')); return isNaN(n)?undefined:n; };
+  parsed.forEach(o=>{
+    let it=items.find(i=>i.code===o.code);
+    const pm=num(o.priceM), lm=num(o.lengthM), sf=num(o.safety);
+    if(it){
+      if(o.name!==undefined) it.name=o.name;
+      if(o.category!==undefined && validCat(o.category)) it.category=o.category;
+      if(o.color!==undefined) it.color=o.color==='블랙'?'아크릴블랙':(o.color==='화이트'?'White':o.color);
+      if(o.spec!==undefined) it.spec=o.spec;
+      if(o.unit!==undefined) it.unit=o.unit;
+      if(sf!==undefined) it.safety=Math.max(0,Math.round(sf));
+      if(pm!==undefined) it.priceM=Math.max(0,pm);
+      if(lm!==undefined) it.lengthM=Math.max(0,lm);
+      if(o.linkName!==undefined) it.linkName=o.linkName;
+      if(o.linkCode!==undefined) it.linkCode=o.linkCode;
+      updated++;
+    }else{
+      const guessBlack=/(deep black|9005|블랙|black)/i.test((o.name||'')+(o.color||'')+o.code);
+      const col = o.color==='블랙'?'아크릴블랙':(o.color==='화이트'?'White':(o.color||(guessBlack?'아크릴블랙':'White')));
+      items.push({id:uid(),code:o.code,name:o.name||o.code,
+        category:validCat(o.category)?o.category:'프로파일',
+        color:col, spec:o.spec||'',unit:o.unit||'본',
+        linkName:o.linkName||'',linkCode:o.linkCode||'',
+        safety:sf!==undefined?Math.max(0,Math.round(sf)):0,
+        priceM:pm!==undefined?Math.max(0,pm):0,
+        lengthM:lm!==undefined?Math.max(0,lm):6,
+        stock:0});
+      added++;
+    }
+  });
+  return {added,updated};
+}
+function openBulk(){ $('#bulkText').value=''; $('#bulkPreview').textContent=''; $('#bulkScrim').classList.add('on'); $('#bulkText').focus(); }
+function previewBulk(){
+  const parsed=parseBulk($('#bulkText').value);
+  if(!parsed.length){ $('#bulkPreview').textContent='붙여넣은 내용이 없습니다.'; return; }
+  const {added,updated}=bulkCounts(parsed);
+  $('#bulkPreview').innerHTML=`인식 <b>${parsed.length}</b>건 → 수정 ${updated}건 · 신규 ${added}건`;
+}
+async function applyBulkAndSave(){
+  const parsed=parseBulk($('#bulkText').value);
+  if(!parsed.length){ toast('인식된 품목이 없습니다'); return; }
+  const {added,updated}=applyBulk(parsed);
+  await saveItems(); $('#bulkScrim').classList.remove('on'); renderAll();
+  toast(`수정 ${updated}건 · 신규 ${added}건 반영`);
+}
+
+/* ---------- modals: product ---------- */
+let editingProd=null;
+let prodDraw={changed:false, thumb:null, full:null};
+function renderDrawPreview(){
+  const t=prodDraw.thumb;
+  $('#drawPreview').innerHTML = t
+    ? `<img src="${t}" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--line);display:block">`
+    : `<div class="spec" style="font-size:12px">첨부된 도면 없음</div>`;
+  $('#btnDrawRemove').style.display = t ? '' : 'none';
+}
+function bomLineHTML(sel,qty){
+  const opts = items.map(i=>`<option value="${i.id}" ${i.id===sel?'selected':''}>[${i.category}] ${esc(i.name)} · ${esc(i.code)}</option>`).join('');
+  return `<div class="bom-line">
+    <select class="bl-item"><option value="">— 자재 —</option>${opts}</select>
+    <input class="bl-qty num" type="number" min="0" step="0.1" value="${qty??1}" placeholder="소요량">
+    <button class="btn sm ghost bl-rm" style="color:var(--warn)">✕</button>
+  </div>`;
+}
+function openProdModal(p){
+  editingProd=p||null;
+  $('#prodModalTitle').textContent = p?'제품 수정':'제품 등록';
+  $('#p_name').value = p?p.name:'';
+  const lines = p&&p.bom.length ? p.bom.map(b=>bomLineHTML(b.itemId,b.qty)).join('') : bomLineHTML(null,1);
+  $('#bomLines').innerHTML = lines;
+  bindBomRm();
+  prodDraw={changed:false, thumb: p?(p.thumb||null):null, full:null};
+  $('#p_draw').value='';
+  renderDrawPreview();
+  $('#prodScrim').classList.add('on');
+}
+function bindBomRm(){
+  $$('#bomLines .bl-rm').forEach(b=>b.onclick=()=>{ b.closest('.bom-line').remove(); });
+}
+async function saveProd(){
+  const name=$('#p_name').value.trim();
+  if(!name){ toast('제품명을 입력하세요'); return; }
+  const bom=[];
+  $$('#bomLines .bom-line').forEach(l=>{
+    const id=l.querySelector('.bl-item').value, q=parseFloat(l.querySelector('.bl-qty').value);
+    if(id && q>0) bom.push({itemId:id,qty:q});
+  });
+  if(!bom.length){ toast('구성 자재를 1개 이상 추가하세요'); return; }
+  let prod;
+  if(editingProd){ editingProd.name=name; editingProd.bom=bom; prod=editingProd; }
+  else{ prod={id:uid(),name,bom}; products.push(prod); }
+  if(prodDraw.changed){
+    if(prodDraw.full){
+      const ok=await sSet(drawKey(prod.id), prodDraw.full);
+      if(ok){ prod.thumb=prodDraw.thumb; }
+      else { toast('도면 저장 실패 (용량 초과 가능)'); }
+    } else { await sDel(drawKey(prod.id)); delete prod.thumb; }
+  }
+  await persistProducts(); $('#prodScrim').classList.remove('on'); renderAll(); toast('제품이 저장되었습니다');
+}
+
+/* ---------- produce ---------- */
+let producingId=null;
+function openProduce(p){
+  producingId=p.id;
+  $('#produceName').textContent=p.name;
+  $('#produceQty').value=1;
+  drawProducePreview();
+  $('#produceScrim').classList.add('on');
+}
+function drawProducePreview(){
+  const p=products.find(x=>x.id===producingId); if(!p) return;
+  const n=Math.max(1,parseInt($('#produceQty').value||1,10));
+  const rows=p.bom.map(b=>{
+    const it=itemById(b.itemId); if(!it) return '';
+    const need=b.qty*n, after=it.stock-need, short=after<0;
+    return `<tr>
+      <td>${esc(it.name)} <span class="code">${esc(it.code)}</span></td>
+      <td class="r num">${fmt(need)} ${esc(it.unit||'')}</td>
+      <td class="r num" style="${short?'color:var(--warn);font-weight:700':''}">${fmt(after)}${short?' ⚠':''}</td>
+    </tr>`;
+  }).join('');
+  $('#producePreview').innerHTML=`<table><thead><tr><th>자재</th><th class="r">차감</th><th class="r">차감 후 재고</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function confirmProduce(){
+  const p=products.find(x=>x.id===producingId); if(!p) return;
+  const n=Math.max(1,parseInt($('#produceQty').value||1,10));
+  const short=p.bom.some(b=>{const it=itemById(b.itemId);return it && (it.stock-b.qty*n)<0;});
+  if(short && !confirm('일부 자재가 재고 부족(음수)이 됩니다. 그래도 생산 차감할까요?')) return;
+  const lines=[];
+  p.bom.forEach(b=>{ const it=itemById(b.itemId); if(!it) return;
+    const d=-(b.qty*n); it.stock+=d; lines.push({itemId:it.id,code:it.code,name:it.name,delta:d}); });
+  history.unshift({id:uid(),ts:Date.now(),type:'produce',memo:`${p.name} ×${n} 생산`,lines});
+  await saveItems(); await saveHist();
+  $('#produceScrim').classList.remove('on'); renderAll();
+  toast(`${p.name} ${n}개 생산 차감 완료`);
+}
+
+/* ---------- drawing lightbox ---------- */
+async function showLightbox(name, thumb, key){
+  $('#lightTitle').textContent='도면 불러오는 중...';
+  $('#lightImg').src = thumb || '';
+  $('#lightScrim').classList.add('on');
+  const full = await sGet(key);
+  $('#lightTitle').textContent = name + ' · 도면';
+  if(full) $('#lightImg').src = full;
+}
+async function openDrawing(p){ if(p) showLightbox(p.name, p.thumb, drawKey(p.id)); }
+async function openItemDrawing(i){ if(i) showLightbox(`[${i.code}] ${i.name}`, i.thumb, itemDrawKey(i.id)); }
+
+/* ---------- export ---------- */
+function exportCSV(){
+  if(!items.length){ toast('내보낼 품목이 없습니다'); return; }
+  const head=['품목코드','품명','구분','색상','연결품목','연결코드','규격','단위','현재고','안전재고','단가(원/m)','본길이(m)','단위당단가','금액','상태'];
+  const rows=items.map(i=>[i.code,i.name,i.category,colorOf(i),i.linkName||'',i.linkCode||'',i.spec||'',i.unit||'',i.stock,i.safety,i.priceM||0,(i.lengthM!=null?i.lengthM:6),Math.round(unitCost(i)),Math.round(itemValue(i)),statusKo(status(i))]);
+  const csv='\uFEFF'+[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='S9000_현재고.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+/* ---------- load GEALAN S9000 catalog (공장 실제 데이터) ----------
+   [code, name, color, priceM(원/m), linkName, linkCode]  — 전 품목 6M 정척 = 본.
+   기존 품목은 단가·연결정보·색상을 갱신(재고·안전재고 유지), 없으면 신규 추가. */
+async function seed(){
+  const msg = items.length
+    ? 'S9000 자재 목록을 반영합니다. 기존 품목은 단가·연결정보·색상이 갱신되고(재고·안전재고는 유지), 없는 품목은 추가됩니다. 계속할까요?'
+    : 'S9000 자재 목록을 불러옵니다. 계속할까요?';
+  if(items.length && !confirm(msg)) return;
+  const W='White', B='아크릴블랙';
+  const rows=[
+    ['600200Q','프레임, 화이트',W,9567,'F70 화이트','F70w'],
+    ['600100Q','프레임, 화이트 (중간가스켓X)',W,9567,'F70 화이트','F70w'],
+    ['600300Q','샤시, 화이트 (=600388)',W,9500,'S82 화이트','S82w'],
+    ['601600Q','도어프레임, 화이트',W,20410,'F84 화이트','F84w'],
+    ['603300Q','외부오픈, 화이트',W,20000,'S108 화이트','S108w'],
+    ['601588','프레임 도어, 화이트 (가스켓없음)',W,15700,'F84 화이트','F84w'],
+    ['605000','중간바, 화이트',W,12683,'M92 화이트','M92w'],
+    ['605400Q','광폭중간바, 화이트',W,15000,'M108 화이트','M108w'],
+    ['601200','더미바, 화이트',W,12000,'M64 화이트','M64w'],
+    ['520187S','연장바 20mm, 화이트',W,8783,'연장바 20mm','EXT20'],
+    ['521388S','연장바 36mm, 화이트',W,13000,'연장바 36mm',''],
+    ['520288S','연장바 58mm, 화이트',W,20000,'연장바 58mm',''],
+    ['520387S','연장바 125mm, 화이트',W,50000,'연장바 128mm',''],
+    ['614600SC','지비(비드) 47, 화이트',W,2867,'GB 47mm','GB47'],
+    ['612400SC','지비(비드) 24, 화이트',W,4300,'GB 24mm','GB24'],
+    ['230400','90° 코너각, 화이트 [GEALAN]',W,30000,'90도 직각바','ANGLE90'],
+    ['606104','프로젝트 샤시, 화이트',W,9700,'S89 화이트','S89w'],
+    ['520600S','자유각, 화이트',W,30000,'자유각, 화이트',''],
+    ['520700S','자유각 어댑터, 화이트',W,25000,'자유각 어댑터 화이트',''],
+    ['600204-9005','프레임, 아크릴블랙',B,14150,'F70 블랙','F70b'],
+    ['600304-9005','샤시, 아크릴블랙',B,12933,'S82 블랙','S82b'],
+    ['601604-9005','도어프레임, 아크릴블랙',B,0,'F84 블랙(가스켓)',''],
+    ['601504-9005','프레임 도어, 아크릴블랙 (가스켓없음, 안쪽열기)',B,25650,'F84 in 블랙',''],
+    ['604504-9005','도어프레임, 아크릴블랙 (가스켓없음, 바깥열기)',B,25650,'F84 블랙','F84b'],
+    ['603304-9005','외부오픈, 아크릴블랙',B,23200,'S108 블랙','S108b'],
+    ['601704-9005','내부오픈 도어샤시, 아크릴블랙',B,23200,'S108(내부오픈) 블랙',''],
+    ['605004-9005','중간바, 아크릴블랙',B,20667,'M92 블랙','M92b'],
+    ['605404-9005','광폭중간바, 아크릴블랙',B,19600,'M108 블랙','M108b'],
+    ['521304-9005','연장바 36mm, 아크릴블랙',B,15983,'연장바 36mm 블랙','EXT36b'],
+    ['520204-9005','연장바 58mm, 아크릴블랙',B,25000,'연장바 58mm 블랙',''],
+    ['601204-9005','더미바, 아크릴블랙',B,18000,'M64 블랙','M64b'],
+    ['604204-9005','더미바, in 아크릴블랙',B,18000,'M64 in 블랙',''],
+    ['606104-9005','프로젝트샤시, 아크릴블랙',B,13100,'S89 블랙','S89b'],
+    ['230404-9005','90° 코너각, 아크릴블랙 [GEALAN]',B,30000,'90도 직각바','ANGLE90'],
+    ['520604-9005','자유각, 아크릴블랙',B,35000,'자유각, 블랙',''],
+    ['520704-9005','자유각 어댑터, 아크릴블랙',B,30000,'자유각 어댑터 블랙',''],
+  ];
+  let added=0,updated=0;
+  rows.forEach(([code,name,color,priceM,linkName,linkCode])=>{
+    let it=items.find(i=>i.code===code);
+    if(it){
+      it.priceM=priceM; it.color=color; it.linkName=linkName; it.linkCode=linkCode;
+      if(it.lengthM==null) it.lengthM=6;
+      updated++;
+    }else{
+      items.push({id:uid(),code,name,category:'프로파일',color,spec:'6M',unit:'본',
+        priceM,lengthM:6,linkName,linkCode,safety:0,stock:0});
+      added++;
+    }
+  });
+  const by=c=>items.find(i=>i.code===c);
+  if(!products.length){
+    const fr=by('600200Q'),sa=by('600300Q'),bd=by('612400SC');
+    if(fr&&sa&&bd)
+      products.push({id:uid(),name:'예시 · 단창 (프레임+샤시)',bom:[
+        {itemId:fr.id,qty:1},{itemId:sa.id,qty:1},{itemId:bd.id,qty:4}]});
+  }
+  await saveItems(); await persistProducts(); renderAll();
+  toast(`반영 완료 — 신규 ${added} · 갱신 ${updated}`);
+}
+async function resetAll(){
+  if(!confirm('모든 품목 · 제품 · 이력을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+  for(const p of products){ if(p.thumb) await sDel(drawKey(p.id)); }
+  for(const i of items){ if(i.thumb) await sDel(itemDrawKey(i.id)); }
+  items=[];products=[];history=[];
+  await saveItems(); await persistProducts(); await saveHist(); renderAll(); toast('초기화되었습니다');
+}
+
+/* ---------- render all ---------- */
+function renderAll(){ renderDash(); renderItems(); fillItemSelects(); renderHist(); renderProducts(); }
+
+/* ---------- events ---------- */
+function bind(){
+  // tabs
+  $$('.tab').forEach(t=>t.onclick=()=>{
+    $$('.tab').forEach(x=>x.setAttribute('aria-selected','false'));
+    t.setAttribute('aria-selected','true');
+    $$('.panel').forEach(p=>p.classList.remove('on'));
+    $('#panel-'+t.dataset.tab).classList.add('on');
+  });
+  // header tools
+  $('#btnExport').onclick=exportCSV; $('#btnSeed').onclick=seed; $('#btnReset').onclick=resetAll;
+  // items
+  $('#btnAddItem').onclick=()=>openItemModal(null);
+  $('#itemSearch').oninput=e=>{curSearch=e.target.value;renderItems();};
+  $$('#catFilter .fbtn').forEach(b=>b.onclick=()=>{
+    $$('#catFilter .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); curCat=b.dataset.cat; renderItems();
+  });
+  $$('#colorFilter .fbtn').forEach(b=>b.onclick=()=>{
+    $$('#colorFilter .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); curColor=b.dataset.color; renderItems();
+  });
+  $('#itemsTable').onclick=e=>{
+    const ed=e.target.dataset.edit, dl=e.target.dataset.del, vw=e.target.dataset.iview;
+    if(vw) openItemDrawing(itemById(vw));
+    if(ed) openItemModal(itemById(ed));
+    if(dl){ const it=itemById(dl); if(confirm(`"${it.name}" 품목을 삭제할까요?`)){ if(it.thumb) sDel(itemDrawKey(it.id)); items=items.filter(i=>i.id!==dl); saveItems().then(renderAll);} }
+  };
+  $('#dashTable').onclick=e=>{ const vw=e.target.dataset.iview; if(vw) openItemDrawing(itemById(vw)); };
+  $('#btnSaveItem').onclick=saveItem;
+  ['#f_priceM','#f_lenM','#f_stock'].forEach(s=>$(s).oninput=priceCalcPreview);
+  // bulk import/edit
+  $('#btnBulk').onclick=openBulk;
+  $('#bulkText').oninput=previewBulk;
+  $('#btnBulkApply').onclick=applyBulkAndSave;
+  // item drawing upload / remove
+  $('#i_draw').onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      toast('도면 처리 중...');
+      const full=await resizeImage(f,1600,0.85);
+      const thumb=await resizeImage(f,240,0.75);
+      itemDraw={changed:true, thumb, full};
+      renderItemDrawPreview();
+    }catch(err){ toast('이미지를 읽을 수 없습니다'); }
+    e.target.value='';
+  };
+  $('#btnIDrawRemove').onclick=()=>{ itemDraw={changed:true, thumb:null, full:null}; renderItemDrawPreview(); };
+  // io
+  $('#btnIn').onclick=()=>doInOut('in'); $('#btnOut').onclick=()=>doInOut('out');
+  // bom
+  $('#btnAddProd').onclick=()=>openProdModal(null);
+  $('#btnAddBomLine').onclick=()=>{ $('#bomLines').insertAdjacentHTML('beforeend',bomLineHTML(null,1)); bindBomRm(); };
+  $('#btnSaveProd').onclick=saveProd;
+  $('#prodList').onclick=e=>{
+    const pr=e.target.dataset.produce, ed=e.target.dataset.pedit, dl=e.target.dataset.pdel, vw=e.target.dataset.view;
+    if(vw) openDrawing(products.find(p=>p.id===vw));
+    if(pr) openProduce(products.find(p=>p.id===pr));
+    if(ed) openProdModal(products.find(p=>p.id===ed));
+    if(dl){ const p=products.find(x=>x.id===dl); if(confirm(`"${p.name}" 제품을 삭제할까요?`)){ if(p.thumb) sDel(drawKey(p.id)); products=products.filter(x=>x.id!==dl); persistProducts().then(renderAll);} }
+  };
+  // drawing upload / remove
+  $('#p_draw').onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      toast('도면 처리 중...');
+      const full=await resizeImage(f,1600,0.82);
+      const thumb=await resizeImage(f,240,0.7);
+      prodDraw={changed:true, thumb, full};
+      renderDrawPreview();
+    }catch(err){ toast('이미지를 읽을 수 없습니다'); }
+    e.target.value='';
+  };
+  $('#btnDrawRemove').onclick=()=>{ prodDraw={changed:true, thumb:null, full:null}; renderDrawPreview(); };
+  // produce
+  $('#produceQty').oninput=drawProducePreview;
+  $('#btnConfirmProduce').onclick=confirmProduce;
+  // modal close
+  $$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.scrim').classList.remove('on'));
+  $$('.scrim').forEach(s=>s.onclick=e=>{ if(e.target===s) s.classList.remove('on'); });
+}
+
+/* ---------- init ---------- */
+(async()=>{
+  if(!HAS_STORE && HAS_LS){
+    $('#storeBanner').innerHTML=`<div class="banner">이 기기 브라우저에 자동 저장됩니다. 다른 기기·여러 명과 실시간으로 공유하려면 클라우드 DB 연동이 필요합니다.</div>`;
+  }else if(!HAS_STORE && !HAS_LS){
+    $('#storeBanner').innerHTML=`<div class="banner">※ 이 환경에서는 저장이 지원되지 않아 새로고침 시 데이터가 사라집니다.</div>`;
+  }
+  await loadAll(); bind(); renderAll();
+})();
+</script>
