@@ -374,22 +374,56 @@
   </div>
 </div>
 
+<!-- ===================== Firebase (실시간 동기화) ===================== -->
+<!-- 사용법: 아래 firebaseConfig 값을 본인 Firebase 프로젝트 값으로 바꾸세요.
+     값을 비워두면 자동으로 이 기기 브라우저 저장(localStorage)으로 동작합니다. -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-/* ---------- storage layer (window.storage with in-memory fallback) ---------- */
+  // ↓↓↓ 여기에 Firebase 콘솔 > 프로젝트 설정 > 웹 앱의 firebaseConfig 값을 붙여넣으세요 ↓↓↓
+  window.FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDMPsJd4I1t_sqL8EC4hCt6ZtL63u7M3mU",
+    authDomain: "inventory-481d4.firebaseapp.com",
+    projectId: "inventory-481d4",
+    storageBucket: "inventory-481d4.firebasestorage.app",
+    messagingSenderId: "570375470788",
+    appId: "1:570375470788:web:3daeb2d6f8672541021391"
+  };
+  // 한 공장에서 여러 대를 쓰면 같은 값을 그대로 두세요. 매장/현장을 분리하려면 아래 이름만 다르게:
+  window.FIREBASE_WORKSPACE = "factory1";
+</script>
+
+<script>
+/* ---------- storage layer: Firebase > window.storage > localStorage > memory ---------- */
+let FB_DB=null, USE_FB=false;
+try{
+  const cfg=window.FIREBASE_CONFIG||{};
+  if(window.firebase && cfg.apiKey && cfg.projectId){
+    firebase.initializeApp(cfg);
+    FB_DB=firebase.firestore();
+    USE_FB=true;
+  }
+}catch(e){ console.error('Firebase init 실패:', e); USE_FB=false; }
+const FB_WS = window.FIREBASE_WORKSPACE || 'factory1';
+function fbDoc(key){ return FB_DB.collection('workspaces').doc(FB_WS).collection('store').doc(key.replace(/[\/.]/g,'_')); }
+
 const HAS_STORE = !!(window.storage && window.storage.get);
 const HAS_LS = (()=>{ try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; }catch(e){ return false; } })();
 const mem = {};
 async function sGet(key){
+  if(USE_FB){ try{ const d=await fbDoc(key).get(); return d.exists?d.data().value:null; }catch(e){ console.error(e); return null; } }
   if(HAS_STORE){ try{ const r=await window.storage.get(key); return r?r.value:null; }catch(e){ return null; } }
   if(HAS_LS){ return localStorage.getItem(key); }
   return mem[key] ?? null;
 }
 async function sSet(key,val){
+  if(USE_FB){ try{ await fbDoc(key).set({value:val}); return true; }catch(e){ console.error('save failed',e); return false; } }
   if(HAS_STORE){ try{ await window.storage.set(key,val,false); return true; }catch(e){ console.error('save failed',e); return false; } }
   if(HAS_LS){ try{ localStorage.setItem(key,val); return true; }catch(e){ console.error('save failed',e); return false; } }
   mem[key]=val; return true;
 }
 async function sDel(key){
+  if(USE_FB){ try{ await fbDoc(key).delete(); }catch(e){} return; }
   if(HAS_STORE){ try{ await window.storage.delete(key,false); }catch(e){} return; }
   if(HAS_LS){ try{ localStorage.removeItem(key); }catch(e){} return; }
   delete mem[key];
@@ -409,6 +443,16 @@ async function loadAll(){
 async function saveItems(){ await sSet(K_ITEMS, JSON.stringify(items)); }
 async function persistProducts(){ await sSet(K_PROD, JSON.stringify(products)); }
 async function saveHist(){  history=history.slice(0,500); await sSet(K_HIST, JSON.stringify(history)); }
+
+function subscribeFB(){
+  // 다른 기기/사람이 바꾸면 실시간으로 받아 화면 갱신
+  const bind=(key,apply)=> fbDoc(key).onSnapshot(d=>{
+    try{ apply(JSON.parse((d.exists?d.data().value:null) || '[]')); renderAll(); }catch(e){ console.error(e); }
+  }, err=>console.error('실시간 동기화 오류:', err));
+  bind(K_ITEMS, v=>{ items=v; });
+  bind(K_PROD,  v=>{ products=v; });
+  bind(K_HIST,  v=>{ history=v; });
+}
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
@@ -1022,7 +1066,7 @@ function bind(){
     const f=e.target.files[0]; if(!f) return;
     try{
       toast('도면 처리 중...');
-      const full=await resizeImage(f,1600,0.85);
+      const full=await resizeImage(f,1280,0.8);
       const thumb=await resizeImage(f,240,0.75);
       itemDraw={changed:true, thumb, full};
       renderItemDrawPreview();
@@ -1048,7 +1092,7 @@ function bind(){
     const f=e.target.files[0]; if(!f) return;
     try{
       toast('도면 처리 중...');
-      const full=await resizeImage(f,1600,0.82);
+      const full=await resizeImage(f,1280,0.8);
       const thumb=await resizeImage(f,240,0.7);
       prodDraw={changed:true, thumb, full};
       renderDrawPreview();
@@ -1066,11 +1110,15 @@ function bind(){
 
 /* ---------- init ---------- */
 (async()=>{
-  if(!HAS_STORE && HAS_LS){
-    $('#storeBanner').innerHTML=`<div class="banner">이 기기 브라우저에 자동 저장됩니다. 다른 기기·여러 명과 실시간으로 공유하려면 클라우드 DB 연동이 필요합니다.</div>`;
+  if(USE_FB){
+    $('#storeBanner').innerHTML=`<div class="banner" style="background:var(--teal-soft);color:var(--teal)">☁ 클라우드 실시간 동기화 사용 중 (작업공간: ${FB_WS}) — 여러 기기에서 같은 재고를 공유합니다.</div>`;
+  }else if(!HAS_STORE && HAS_LS){
+    $('#storeBanner').innerHTML=`<div class="banner">이 기기 브라우저에 자동 저장됩니다. 여러 기기와 실시간 공유하려면 Firebase 설정값을 입력하세요.</div>`;
   }else if(!HAS_STORE && !HAS_LS){
     $('#storeBanner').innerHTML=`<div class="banner">※ 이 환경에서는 저장이 지원되지 않아 새로고침 시 데이터가 사라집니다.</div>`;
   }
-  await loadAll(); bind(); renderAll();
+  bind();
+  if(USE_FB){ subscribeFB(); renderAll(); }   // 스냅샷이 도착하면 자동 갱신
+  else { await loadAll(); renderAll(); }
 })();
 </script>
