@@ -79,6 +79,12 @@
   #itemsTable,#dashTable,#histTable,#alertBody{overflow-x:auto}
   td.link{font-family:var(--mono);font-size:12px;color:var(--slate);white-space:nowrap}
   td.link .ln{color:var(--ink);font-family:var(--sans);font-size:12.5px}
+  td.drag{width:26px;text-align:center;padding-left:4px;padding-right:4px}
+  .drag-h{cursor:grab;color:#aeb4bd;user-select:none;font-size:15px;line-height:1}
+  .drag-h:active{cursor:grabbing}
+  #itemsTable tr.dragging{opacity:.4}
+  #itemsTable tr.drop-before td{box-shadow:inset 0 2px 0 0 var(--teal)}
+  #itemsTable tr.drop-after td{box-shadow:inset 0 -2px 0 0 var(--teal)}
   table{width:100%;border-collapse:collapse}
   th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line)}
   td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
@@ -609,6 +615,7 @@ function nameCell(i){
 }
 function itemColumns(){
   return [
+    {th:'',           cls:'drag', cell:i=>`<span class="drag-h" title="드래그하여 순서 변경">⠿</span>`},
     {th:'구분',       cls:'',     cell:i=>`<span class="chip ${catClass(i.category)}">${i.category}</span>`},
     {th:'색상',       cls:'',     cell:i=>swatchHTML(i)},
     {th:'품목코드',   cls:'code', cell:i=>esc(i.code)},
@@ -633,11 +640,22 @@ function renderItems(){
   const cols=itemColumns();
   const valIdx=cols.findIndex(c=>c.isValue);
   const head=cols.map(c=>`<th class="${c.cls}">${c.th}</th>`).join('');
-  const body=list.map(i=>`<tr>${cols.map(c=>`<td class="${c.cls}">${c.cell(i)}</td>`).join('')}</tr>`).join('');
+  const body=list.map(i=>`<tr draggable="true" data-id="${i.id}">${cols.map(c=>`<td class="${c.cls}">${c.cell(i)}</td>`).join('')}</tr>`).join('');
   const sum=fmtWon(list.reduce((s,i)=>s+itemValue(i),0));
   const trailing=cols.slice(valIdx+1).map(()=>'<td></td>').join('');
   const foot=`<tr style="background:var(--line2)"><td colspan="${valIdx}" class="r" style="font-weight:700">합계 금액</td><td class="r num" style="font-weight:700;color:var(--teal)">${sum}</td>${trailing}</tr>`;
   $('#itemsTable').innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table>`;
+}
+function reorderItem(dragId, targetId, after){
+  if(!dragId || dragId===targetId) return;
+  const from=items.findIndex(x=>x.id===dragId);
+  if(from<0) return;
+  const [it]=items.splice(from,1);
+  let to=items.findIndex(x=>x.id===targetId);
+  if(to<0){ items.splice(from,0,it); return; }
+  if(after) to+=1;
+  items.splice(to,0,it);
+  saveItems(); renderItems();
 }
 
 /* ---------- IN/OUT ---------- */
@@ -1079,6 +1097,16 @@ function bind(){
     if(dl){ const it=itemById(dl); if(confirm(`"${it.name}" 품목을 삭제할까요?`)){ if(it.thumb) sDel(itemDrawKey(it.id)); items=items.filter(i=>i.id!==dl); saveItems().then(renderAll);} }
   };
   $('#dashTable').onclick=e=>{ const vw=e.target.dataset.iview; if(vw) openItemDrawing(itemById(vw)); };
+  // 품목 표 드래그로 순서 변경
+  (function(){
+    const T=$('#itemsTable'); let dragId=null;
+    const clearMarks=()=>$$('#itemsTable tr.drop-before,#itemsTable tr.drop-after').forEach(r=>r.classList.remove('drop-before','drop-after'));
+    const cleanup=()=>{ clearMarks(); $$('#itemsTable tr.dragging').forEach(r=>r.classList.remove('dragging')); dragId=null; };
+    T.addEventListener('dragstart',e=>{ const tr=e.target.closest('tr[data-id]'); if(!tr) return; dragId=tr.dataset.id; tr.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    T.addEventListener('dragover',e=>{ const tr=e.target.closest('tr[data-id]'); if(!tr||!dragId) return; e.preventDefault(); const r=tr.getBoundingClientRect(); const after=(e.clientY-r.top)>r.height/2; clearMarks(); tr.classList.add(after?'drop-after':'drop-before'); });
+    T.addEventListener('drop',e=>{ const tr=e.target.closest('tr[data-id]'); if(!tr||!dragId){ cleanup(); return; } e.preventDefault(); const r=tr.getBoundingClientRect(); const after=(e.clientY-r.top)>r.height/2; const tid=tr.dataset.id, did=dragId; cleanup(); reorderItem(did,tid,after); });
+    T.addEventListener('dragend',cleanup);
+  })();
   $('#btnSaveItem').onclick=saveItem;
   ['#f_priceM','#f_lenM','#f_stock'].forEach(s=>$(s).oninput=priceCalcPreview);
   // bulk import/edit
