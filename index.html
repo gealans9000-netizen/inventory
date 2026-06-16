@@ -209,6 +209,12 @@
         <button class="fbtn" data-color="아크릴블랙" aria-pressed="false"><span class="dot-c dot-black" style="display:inline-block;vertical-align:-2px;margin-right:4px"></span>아크릴블랙</button>
         <button class="fbtn" data-color="기타" aria-pressed="false">기타</button>
       </div>
+      <span class="spec" style="font-size:12px;font-weight:600;margin-left:8px">열 표시</span>
+      <div class="filters" id="colToggle">
+        <button class="fbtn" data-col="linkName" aria-pressed="false">품목(연결)</button>
+        <button class="fbtn" data-col="linkCode" aria-pressed="false">코드(연결)</button>
+        <button class="fbtn" data-col="safety" aria-pressed="false">안전재고</button>
+      </div>
     </div>
     <div class="card"><div id="itemsTable"></div></div>
   </section>
@@ -590,39 +596,48 @@ function renderDash(){
 
 /* ---------- ITEMS ---------- */
 let curCat='all', curSearch='', curColor='all';
-function emptyItems(){ return `<div class="empty"><b>등록된 품목이 없습니다</b>우측 상단 "품목 등록" 또는 "예시 데이터"로 시작하세요.</div>`; }
+let colPref={linkName:false,linkCode:false,safety:false};
+try{ const s=localStorage.getItem('inv:colpref'); if(s) colPref=Object.assign(colPref,JSON.parse(s)); }catch(e){}
+function saveColPref(){ try{ localStorage.setItem('inv:colpref',JSON.stringify(colPref)); }catch(e){} }
+const dash='<span style="color:var(--muted)">-</span>';
+function emptyItems(){ return `<div class="empty"><b>등록된 품목이 없습니다</b>우측 상단 "품목 등록" 또는 "S9000 자재 불러오기"로 시작하세요.</div>`; }
+function nameCell(i){
+  return `<div style="display:flex;align-items:center;gap:10px">
+    ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" title="단면도 크게 보기" style="width:40px;height:40px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:none">`:''}
+    <div><div class="nm">${esc(i.name)}</div><div class="spec">${esc(i.spec||'')}</div></div>
+  </div>`;
+}
+function itemColumns(){
+  return [
+    {th:'구분',       cls:'',     cell:i=>`<span class="chip ${catClass(i.category)}">${i.category}</span>`},
+    {th:'색상',       cls:'',     cell:i=>swatchHTML(i)},
+    {th:'품목코드',   cls:'code', cell:i=>esc(i.code)},
+    {th:'품명 / 규격', cls:'',     cell:nameCell},
+    {th:'품목(연결)', cls:'link', opt:'linkName', cell:i=>i.linkName?`<span class="ln">${esc(i.linkName)}</span>`:dash},
+    {th:'코드(연결)', cls:'link', opt:'linkCode', cell:i=>i.linkCode?esc(i.linkCode):dash},
+    {th:'현재고(본)', cls:'r',    cell:i=>`<span class="num" style="font-weight:600">${fmt(i.stock)}${(i.unit&&i.unit!=='본')?' '+esc(i.unit):''}</span>`},
+    {th:'안전재고',   cls:'r',    opt:'safety', cell:i=>`<span class="num">${fmt(i.safety)}</span>`},
+    {th:'단가(원/m)', cls:'r',    cell:i=>`<span class="num">${i.priceM?fmt(i.priceM):'-'}</span>`},
+    {th:'금액',       cls:'r',    isValue:true, cell:i=>`<span class="num" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</span>`},
+    {th:'',           cls:'r',    cell:i=>`<div class="row-actions">
+        <button class="btn sm ghost" data-edit="${i.id}">수정</button>
+        <button class="btn sm ghost" data-del="${i.id}" style="color:var(--warn)">삭제</button></div>`},
+  ].filter(c=> !c.opt || colPref[c.opt]);
+}
 function renderItems(){
   let list=items.filter(i=> (curCat==='all'||i.category===curCat) && (curColor==='all'||colorOf(i)===curColor));
   if(curSearch){ const q=curSearch.toLowerCase();
-    list=list.filter(i=>(i.code+i.name+(i.spec||'')).toLowerCase().includes(q)); }
+    list=list.filter(i=>(i.code+i.name+(i.spec||'')+(i.linkName||'')+(i.linkCode||'')).toLowerCase().includes(q)); }
   if(!items.length){ $('#itemsTable').innerHTML=emptyItems(); return; }
   if(!list.length){ $('#itemsTable').innerHTML=`<div class="empty"><b>검색 결과가 없습니다</b></div>`; return; }
-  $('#itemsTable').innerHTML = `<table><thead><tr>
-      <th>품목코드</th><th>품명 / 규격</th><th>품목(연결)</th><th>코드(연결)</th><th>구분</th><th>색상</th><th>단위</th><th class="r">현재고</th><th class="r">안전재고</th><th class="r">단가(원/m)</th><th class="r">금액</th><th></th>
-    </tr></thead><tbody>`+ list.map(i=>`<tr>
-      <td class="code">${esc(i.code)}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:10px">
-          ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" title="단면도 크게 보기" style="width:40px;height:40px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:none">`:''}
-          <div><div class="nm">${esc(i.name)}</div><div class="spec">${esc(i.spec||'')}</div></div>
-        </div>
-      </td>
-      <td class="link"><span class="ln">${i.linkName?esc(i.linkName):'<span style="color:var(--muted)">-</span>'}</span></td>
-      <td class="link">${i.linkCode?esc(i.linkCode):'<span style="color:var(--muted)">-</span>'}</td>
-      <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
-      <td>${swatchHTML(i)}</td>
-      <td>${esc(i.unit||'')}</td>
-      <td class="r num" style="font-weight:600">${fmt(i.stock)}</td>
-      <td class="r num">${fmt(i.safety)}</td>
-      <td class="r num">${i.priceM?fmt(i.priceM):'-'}</td>
-      <td class="r num" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</td>
-      <td class="r"><div class="row-actions">
-        <button class="btn sm ghost" data-edit="${i.id}">수정</button>
-        <button class="btn sm ghost" data-del="${i.id}" style="color:var(--warn)">삭제</button>
-      </div></td>
-    </tr>`).join('')
-    + `<tr style="background:var(--line2)"><td colspan="10" class="r" style="font-weight:700">합계 금액</td><td class="r num" style="font-weight:700;color:var(--teal)">${fmtWon(list.reduce((s,i)=>s+itemValue(i),0))}</td><td></td></tr>`
-    + `</tbody></table>`;
+  const cols=itemColumns();
+  const valIdx=cols.findIndex(c=>c.isValue);
+  const head=cols.map(c=>`<th class="${c.cls}">${c.th}</th>`).join('');
+  const body=list.map(i=>`<tr>${cols.map(c=>`<td class="${c.cls}">${c.cell(i)}</td>`).join('')}</tr>`).join('');
+  const sum=fmtWon(list.reduce((s,i)=>s+itemValue(i),0));
+  const trailing=cols.slice(valIdx+1).map(()=>'<td></td>').join('');
+  const foot=`<tr style="background:var(--line2)"><td colspan="${valIdx}" class="r" style="font-weight:700">합계 금액</td><td class="r num" style="font-weight:700;color:var(--teal)">${sum}</td>${trailing}</tr>`;
+  $('#itemsTable').innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table>`;
 }
 
 /* ---------- IN/OUT ---------- */
@@ -1047,6 +1062,15 @@ function bind(){
   $$('#colorFilter .fbtn').forEach(b=>b.onclick=()=>{
     $$('#colorFilter .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
     b.setAttribute('aria-pressed','true'); curColor=b.dataset.color; renderItems();
+  });
+  // 열 표시/숨기기 토글
+  $$('#colToggle .fbtn').forEach(b=>{
+    b.setAttribute('aria-pressed', colPref[b.dataset.col]?'true':'false');
+    b.onclick=()=>{
+      colPref[b.dataset.col]=!colPref[b.dataset.col];
+      b.setAttribute('aria-pressed', colPref[b.dataset.col]?'true':'false');
+      saveColPref(); renderItems();
+    };
   });
   $('#itemsTable').onclick=e=>{
     const ed=e.target.dataset.edit, dl=e.target.dataset.del, vw=e.target.dataset.iview;
