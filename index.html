@@ -176,6 +176,7 @@
     <button class="tab" role="tab" aria-selected="false" data-tab="items">품목</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="io">입출고</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="bom">제품 · 생산</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="report">보고서 · 발주</button>
   </div>
 </header>
 
@@ -260,6 +261,31 @@
       <button class="btn primary" id="btnAddProd">+ 제품 등록</button>
     </div>
     <div id="prodList"></div>
+  </section>
+
+  <!-- REPORT / ORDER -->
+  <section class="panel" id="panel-report">
+    <h2 class="sec">재고 실사표</h2>
+    <div class="card form-card">
+      <div style="color:var(--muted);font-size:13px;margin-bottom:14px">색상별·종류별로 정리된 재고 조사용 표입니다. <b>실사수량·차이</b> 칸은 비어 있어 현장에서 손으로 적거나, 엑셀에서 입력할 수 있습니다.</div>
+      <div class="row-actions">
+        <button class="btn" id="btnStockXlsx">엑셀 다운로드</button>
+        <button class="btn primary" id="btnStockPrint">인쇄</button>
+      </div>
+    </div>
+
+    <h2 class="sec" style="margin-top:8px">발주서</h2>
+    <div class="card form-card">
+      <div class="toolbar" style="margin-bottom:12px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="orderAll" style="width:auto"> 안전재고 충족 품목도 포함</label>
+        <div style="margin-left:auto" class="row-actions">
+          <button class="btn" id="btnOrderXlsx">엑셀 다운로드</button>
+          <button class="btn primary" id="btnOrderPrint">인쇄</button>
+        </div>
+      </div>
+      <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">기본값은 <b>안전재고 − 현재고</b> 만큼 자동 제안되며, 발주수량은 직접 수정할 수 있습니다.</div>
+      <div id="orderTable"></div>
+    </div>
   </section>
 </div>
 
@@ -391,6 +417,7 @@
      값을 비워두면 자동으로 이 기기 브라우저 저장(localStorage)으로 동작합니다. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
   // ↓↓↓ 여기에 Firebase 콘솔 > 프로젝트 설정 > 웹 앱의 firebaseConfig 값을 붙여넣으세요 ↓↓↓
   window.FIREBASE_CONFIG = {
@@ -627,6 +654,7 @@ function itemColumns(){
     {th:'단가(원/m)', cls:'r',    cell:i=>`<span class="num">${i.priceM?fmt(i.priceM):'-'}</span>`},
     {th:'금액',       cls:'r',    isValue:true, cell:i=>`<span class="num" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</span>`},
     {th:'',           cls:'r',    cell:i=>`<div class="row-actions">
+        <button class="btn sm ghost" data-copy="${i.id}">복사</button>
         <button class="btn sm ghost" data-edit="${i.id}">수정</button>
         <button class="btn sm ghost" data-del="${i.id}" style="color:var(--warn)">삭제</button></div>`},
   ].filter(c=> !c.opt || colPref[c.opt]);
@@ -777,6 +805,7 @@ function openItemModal(it){
 async function saveItem(){
   const code=$('#f_code').value.trim(), name=$('#f_name').value.trim();
   if(!code||!name){ toast('품목코드와 품명은 필수입니다'); return; }
+  if(!editingItem && items.some(i=>i.code===code)){ toast('이미 있는 품목코드입니다. 다른 코드를 입력하세요'); $('#f_code').focus(); return; }
   const data={code,name,category:$('#f_cat').value,color:$('#f_color').value,spec:$('#f_spec').value.trim(),
     linkName:$('#f_linkName').value.trim(),linkCode:$('#f_linkCode').value.trim(),
     unit:$('#f_unit').value.trim(),safety:Math.max(0,parseInt($('#f_safe').value||0,10)),
@@ -793,6 +822,30 @@ async function saveItem(){
     } else { await sDel(itemDrawKey(it.id)); delete it.thumb; }
   }
   await saveItems(); $('#itemScrim').classList.remove('on'); renderAll(); toast('저장되었습니다');
+}
+async function openItemCopy(src){
+  if(!src) return;
+  openItemModal(null);                          // 새 품목 등록 상태로 초기화 (editingItem=null)
+  $('#itemModalTitle').textContent='품목 복사 등록';
+  $('#f_code').value='';                         // 코드만 새로 입력
+  $('#f_cat').value=src.category;
+  $('#f_name').value=src.name;
+  $('#f_color').value=colorOf(src);
+  $('#f_linkName').value=src.linkName||'';
+  $('#f_linkCode').value=src.linkCode||'';
+  $('#f_spec').value=src.spec||'';
+  $('#f_unit').value=src.unit||'본';
+  $('#f_safe').value=src.safety||0;
+  $('#f_stock').value=0;                          // 새 품목 재고 0
+  $('#f_priceM').value=src.priceM||0;
+  $('#f_lenM').value=(src.lengthM!=null?src.lengthM:6);
+  priceCalcPreview();
+  if(src.thumb){                                  // 단면도도 복사
+    const full=await sGet(itemDrawKey(src.id));
+    itemDraw={changed:true, thumb:src.thumb, full:full||null};
+    renderItemDrawPreview();
+  }
+  $('#f_code').focus();
 }
 
 /* ---------- bulk import / edit ---------- */
@@ -1057,7 +1110,132 @@ async function resetAll(){
 }
 
 /* ---------- render all ---------- */
-function renderAll(){ renderDash(); renderItems(); fillItemSelects(); renderHist(); renderProducts(); }
+/* ---------- reports: 재고 실사표 & 발주서 ---------- */
+function colorRank(c){ return c==='White'?0:c==='아크릴블랙'?1:2; }
+function typeOf(i){
+  let n=(i.name||'').split(',')[0].trim();
+  n=n.replace(/\s*\(.*$/,'').trim();         // 괄호 이후 제거
+  n=n.replace(/\s+\d+[a-zA-Z]*$/,'').trim(); // 끝의 치수(36mm 등) 제거
+  return n || i.category;
+}
+function sortedForReport(){
+  return [...items].sort((a,b)=>
+    colorRank(colorOf(a))-colorRank(colorOf(b)) ||
+    typeOf(a).localeCompare(typeOf(b),'ko') ||
+    String(a.code).localeCompare(String(b.code)));
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function printWindow(title, inner){
+  const css=`<style>
+    body{font-family:-apple-system,'Malgun Gothic',sans-serif;color:#111;margin:24px}
+    h1{font-size:20px;margin:0 0 4px} .meta{color:#555;font-size:12px;margin-bottom:16px}
+    h2{font-size:15px;margin:18px 0 6px;border-bottom:2px solid #333;padding-bottom:3px}
+    h3{font-size:13px;margin:12px 0 4px;color:#333}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px}
+    th,td{border:1px solid #999;padding:5px 7px;text-align:left}
+    th{background:#eee} td.r,th.r{text-align:right}
+    .blank{background:#fcfcfc;min-width:70px}
+    .po-head{display:flex;gap:30px;margin-bottom:14px;font-size:13px}
+    .po-head div{border-bottom:1px solid #999;min-width:160px;padding:4px 0}
+    .sign{margin-top:24px;text-align:right;font-size:13px}
+    @media print{ body{margin:10mm} button{display:none} }
+  </style>`;
+  const w=window.open('','_blank');
+  if(!w){ toast('팝업이 차단되어 인쇄창을 열 수 없습니다'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${css}</head><body>${inner}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>{ try{w.print();}catch(e){} },350);
+}
+
+function exportStocktakeXlsx(){
+  if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
+  if(!items.length){ toast('품목이 없습니다'); return; }
+  const aoa=[['S9000 재고 실사표','','','','','','출력일',todayISO()],[],
+    ['색상','종류','품목코드','품명','규격','단위','시스템재고','실사수량','차이','비고']];
+  sortedForReport().forEach(i=>aoa.push([colorOf(i),typeOf(i),i.code,i.name,i.spec||'',i.unit||'',i.stock,'','','']));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:10},{wch:12},{wch:12},{wch:28},{wch:8},{wch:6},{wch:10},{wch:10},{wch:8},{wch:14}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'재고실사');
+  XLSX.writeFile(wb,`S9000_재고실사표_${todayISO()}.xlsx`);
+}
+function printStocktake(){
+  if(!items.length){ toast('품목이 없습니다'); return; }
+  const list=sortedForReport(); const byColor={};
+  list.forEach(i=>{ const c=colorOf(i); (byColor[c]=byColor[c]||[]).push(i); });
+  let inner=`<h1>S9000 재고 실사표</h1><div class="meta">출력일 ${new Date().toLocaleDateString('ko-KR')} · 담당자 _____________</div>`;
+  Object.keys(byColor).sort((a,b)=>colorRank(a)-colorRank(b)).forEach(color=>{
+    inner+=`<h2>${esc(color)}</h2>`;
+    const byType={}; byColor[color].forEach(i=>{ const t=typeOf(i); (byType[t]=byType[t]||[]).push(i); });
+    Object.keys(byType).sort((a,b)=>a.localeCompare(b,'ko')).forEach(t=>{
+      inner+=`<h3>· ${esc(t)}</h3><table><thead><tr>
+        <th>품목코드</th><th>품명</th><th>규격</th><th>단위</th><th class="r">시스템재고</th><th class="r">실사수량</th><th class="r">차이</th><th>비고</th>
+      </tr></thead><tbody>`;
+      byType[t].forEach(i=>{ inner+=`<tr><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td>${esc(i.spec||'')}</td><td>${esc(i.unit||'')}</td><td class="r">${fmt(i.stock)}</td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>`; });
+      inner+=`</tbody></table>`;
+    });
+  });
+  printWindow('재고 실사표', inner);
+}
+
+let orderQty={};
+function orderCandidates(){
+  const all=$('#orderAll') && $('#orderAll').checked;
+  return items.filter(i=> all || i.stock < i.safety)
+    .sort((a,b)=>colorRank(colorOf(a))-colorRank(colorOf(b))||typeOf(a).localeCompare(typeOf(b),'ko')||String(a.code).localeCompare(String(b.code)));
+}
+function suggestQty(i){ return Math.max(0, Math.ceil((i.safety||0)-(i.stock||0))); }
+function getQty(i){ return (i.id in orderQty)? orderQty[i.id] : suggestQty(i); }
+function orderRows(){ return orderCandidates().map(i=>({i,q:getQty(i)})).filter(r=>r.q>0); }
+function renderOrder(){
+  if(!items.length){ $('#orderTable').innerHTML=`<div class="empty"><b>품목이 없습니다</b></div>`; return; }
+  const list=orderCandidates();
+  if(!list.length){ $('#orderTable').innerHTML=`<div class="empty"><b>발주가 필요한 품목이 없습니다</b>안전재고 미달 품목이 없습니다. (위 "안전재고 충족 품목도 포함"을 켜면 전체가 표시됩니다)</div>`; return; }
+  const rows=list.map(i=>{ const q=getQty(i), amt=q*unitCost(i);
+    return `<tr>
+      <td>${swatchHTML(i)}</td>
+      <td class="code">${esc(i.code)}</td>
+      <td><div class="nm">${esc(i.name)}</div><div class="spec">${i.linkCode?'연결 '+esc(i.linkCode):''}</div></td>
+      <td class="r num">${fmt(i.stock)}</td>
+      <td class="r num">${fmt(i.safety)}</td>
+      <td class="r"><input type="number" min="0" value="${q}" data-oq="${i.id}" class="num" style="width:78px;text-align:right"></td>
+      <td class="r num">${i.priceM?fmt(i.priceM):'-'}</td>
+      <td class="r num oamt" data-amt="${i.id}" style="font-weight:600">${i.priceM?fmtWon(amt):'-'}</td>
+    </tr>`;}).join('');
+  const total=list.reduce((s,i)=>s+getQty(i)*unitCost(i),0);
+  $('#orderTable').innerHTML=`<table><thead><tr>
+    <th>색상</th><th>품목코드</th><th>품명 / 연결</th><th class="r">현재고</th><th class="r">안전</th><th class="r">발주수량</th><th class="r">단가(원/m)</th><th class="r">금액</th>
+  </tr></thead><tbody>${rows}
+  <tr style="background:var(--line2)"><td colspan="7" class="r" style="font-weight:700">발주 합계</td><td class="r num" id="orderTotal" style="font-weight:700;color:var(--teal)">${fmtWon(total)}</td></tr>
+  </tbody></table>`;
+}
+function recalcOrderTotal(){ let t=0; orderCandidates().forEach(i=>t+=getQty(i)*unitCost(i)); const el=$('#orderTotal'); if(el) el.textContent=fmtWon(t); }
+function exportOrderXlsx(){
+  if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다'); return; }
+  const rows=orderRows(); if(!rows.length){ toast('발주 수량이 입력된 품목이 없습니다'); return; }
+  let total=0;
+  const aoa=[['S9000 발주서','','','','','','출력일',todayISO()],['발주처:','','','','담당자:','','',''],[],
+    ['색상','품목코드','품명','연결코드','발주수량','단위','단가(원/m)','본당단가','금액']];
+  rows.forEach(({i,q})=>{ const uc=unitCost(i),amt=q*uc; total+=amt;
+    aoa.push([colorOf(i),i.code,i.name,i.linkCode||'',q,i.unit||'',i.priceM||0,Math.round(uc),Math.round(amt)]); });
+  aoa.push([],['','','','','','','','합계',Math.round(total)]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:10},{wch:12},{wch:28},{wch:12},{wch:10},{wch:6},{wch:10},{wch:12},{wch:14}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'발주서');
+  XLSX.writeFile(wb,`S9000_발주서_${todayISO()}.xlsx`);
+}
+function printOrder(){
+  const rows=orderRows(); if(!rows.length){ toast('발주 수량이 입력된 품목이 없습니다'); return; }
+  let total=0, body='';
+  rows.forEach(({i,q})=>{ const uc=unitCost(i),amt=q*uc; total+=amt;
+    body+=`<tr><td>${esc(colorOf(i))}</td><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td>${esc(i.linkCode||'')}</td><td class="r">${fmt(q)}</td><td>${esc(i.unit||'')}</td><td class="r">${i.priceM?fmt(i.priceM):'-'}</td><td class="r">${i.priceM?fmtWon(amt):'-'}</td></tr>`; });
+  const inner=`<h1>S9000 발주서</h1><div class="meta">출력일 ${new Date().toLocaleDateString('ko-KR')}</div>
+    <div class="po-head"><div>발주처:&nbsp;</div><div>담당자:&nbsp;</div><div>연락처:&nbsp;</div></div>
+    <table><thead><tr><th>색상</th><th>품목코드</th><th>품명</th><th>연결코드</th><th class="r">발주수량</th><th>단위</th><th class="r">단가(원/m)</th><th class="r">금액</th></tr></thead>
+    <tbody>${body}<tr><td colspan="7" class="r"><b>합계</b></td><td class="r"><b>${fmtWon(total)}</b></td></tr></tbody></table>
+    <div class="sign">담당자 _____________ (인)&nbsp;&nbsp;&nbsp;승인 _____________ (인)</div>`;
+  printWindow('발주서', inner);
+}
+
+function renderAll(){ renderDash(); renderItems(); fillItemSelects(); renderHist(); renderProducts(); renderOrder(); }
 
 /* ---------- events ---------- */
 function bind(){
@@ -1070,6 +1248,19 @@ function bind(){
   });
   // header tools
   $('#btnExport').onclick=exportCSV; $('#btnSeed').onclick=seed; $('#btnReset').onclick=resetAll;
+  // 보고서 · 발주
+  $('#btnStockXlsx').onclick=exportStocktakeXlsx;
+  $('#btnStockPrint').onclick=printStocktake;
+  $('#btnOrderXlsx').onclick=exportOrderXlsx;
+  $('#btnOrderPrint').onclick=printOrder;
+  $('#orderAll').onchange=renderOrder;
+  $('#orderTable').oninput=e=>{
+    const id=e.target.dataset.oq; if(!id) return;
+    orderQty[id]=Math.max(0,parseInt(e.target.value||0,10));
+    const it=itemById(id), amtEl=document.querySelector(`.oamt[data-amt="${id}"]`);
+    if(amtEl) amtEl.textContent = it.priceM?fmtWon(getQty(it)*unitCost(it)):'-';
+    recalcOrderTotal();
+  };
   // items
   $('#btnAddItem').onclick=()=>openItemModal(null);
   $('#itemSearch').oninput=e=>{curSearch=e.target.value;renderItems();};
@@ -1091,8 +1282,9 @@ function bind(){
     };
   });
   $('#itemsTable').onclick=e=>{
-    const ed=e.target.dataset.edit, dl=e.target.dataset.del, vw=e.target.dataset.iview;
+    const ed=e.target.dataset.edit, dl=e.target.dataset.del, vw=e.target.dataset.iview, cp=e.target.dataset.copy;
     if(vw) openItemDrawing(itemById(vw));
+    if(cp) openItemCopy(itemById(cp));
     if(ed) openItemModal(itemById(ed));
     if(dl){ const it=itemById(dl); if(confirm(`"${it.name}" 품목을 삭제할까요?`)){ if(it.thumb) sDel(itemDrawKey(it.id)); items=items.filter(i=>i.id!==dl); saveItems().then(renderAll);} }
   };
