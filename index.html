@@ -1157,7 +1157,8 @@ function bind(){
   $('#btnConfirmProduce').onclick=confirmProduce;
   // modal close
   $$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.scrim').classList.remove('on'));
-  $$('.scrim').forEach(s=>s.onclick=e=>{ if(e.target===s) s.classList.remove('on'); });
+  // 편집/입력 모달은 배경 클릭으로 닫히지 않음 (실수로 닫힘 방지). 도면 뷰어만 배경 클릭으로 닫기.
+  $('#lightScrim').onclick=e=>{ if(e.target===$('#lightScrim')) $('#lightScrim').classList.remove('on'); };
 }
 
 /* ---------- init ---------- */
