@@ -315,8 +315,8 @@
       </div>
       <div style="margin-top:12px"><label class="fld">현재고</label><input id="f_stock" type="number" min="0" value="0" class="num"></div>
       <div class="grid2" style="margin-top:12px">
-        <div><label class="fld">단가 (원/m)</label><input id="f_priceM" type="number" min="0" step="1" value="0" class="num" placeholder="미터당 단가"></div>
-        <div><label class="fld">본당 길이 (m)</label><input id="f_lenM" type="number" min="0" step="0.1" value="6" class="num"></div>
+        <div><label class="fld" id="lblPriceM">단가 (원/m)</label><input id="f_priceM" type="number" min="0" step="1" value="0" class="num" placeholder="미터당 단가"></div>
+        <div id="lenWrap"><label class="fld">본당 길이 (m)</label><input id="f_lenM" type="number" min="0" step="0.1" value="6" class="num"></div>
       </div>
       <div id="priceCalc" class="spec" style="font-size:12.5px;margin-top:8px;line-height:1.6"></div>
       <label class="fld" style="margin-top:16px">도면 · 단면도 (선택)</label>
@@ -512,7 +512,12 @@ function itemById(id){ return items.find(i=>i.id===id); }
 function esc(s){ return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function fmt(n){ return Number(n).toLocaleString('ko-KR'); }
 function fmtWon(n){ return Math.round(Number(n)||0).toLocaleString('ko-KR')+'원'; }
-function unitCost(i){ return (Number(i.priceM)||0) * (i.lengthM!=null?Number(i.lengthM):6); } // 본(단위)당 단가 = 원/m × 본길이
+function isLengthUnit(u){ u=(u||'').trim(); return u==='본'||u==='m'||u==='M'||u==='미터'; }
+function unitCost(i){
+  const p=Number(i.priceM)||0;
+  // 본(길이)단위: m단가 × 본길이 / EA(낱개): 단가 그대로
+  return isLengthUnit(i.unit) ? p*(i.lengthM!=null?Number(i.lengthM):6) : p;
+}
 function itemValue(i){ return (Number(i.stock)||0) * unitCost(i); }                              // 재고 금액 = 현재고 × 단위당 단가
 function totalValue(){ return items.reduce((s,i)=>s+itemValue(i),0); }
 function status(i){ if(i.stock<=0) return 'out'; if(i.stock < i.safety) return 'low'; return 'ok'; }
@@ -651,7 +656,7 @@ function itemColumns(){
     {th:'코드(연결)', cls:'link', opt:'linkCode', cell:i=>i.linkCode?esc(i.linkCode):dash},
     {th:'현재고(본)', cls:'r',    cell:i=>`<span class="num" style="font-weight:600">${fmt(i.stock)}${(i.unit&&i.unit!=='본')?' '+esc(i.unit):''}</span>`},
     {th:'안전재고',   cls:'r',    opt:'safety', cell:i=>`<span class="num">${fmt(i.safety)}</span>`},
-    {th:'단가(원/m)', cls:'r',    cell:i=>`<span class="num">${i.priceM?fmt(i.priceM):'-'}</span>`},
+    {th:'단가',       cls:'r',    cell:i=>i.priceM?`<span class="num">${fmt(i.priceM)}</span><span class="spec" style="font-size:10px">${isLengthUnit(i.unit)?' /m':' /'+esc(i.unit||'EA')}</span>`:'-'},
     {th:'금액',       cls:'r',    isValue:true, cell:i=>`<span class="num" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</span>`},
     {th:'',           cls:'r',    cell:i=>`<div class="row-actions">
         <button class="btn sm ghost" data-copy="${i.id}">복사</button>
@@ -782,11 +787,17 @@ function renderItemDrawPreview(){
   $('#btnIDrawRemove').style.display = t ? '' : 'none';
 }
 function priceCalcPreview(){
+  const unitv=$('#f_unit').value.trim()||'본';
+  const lenBased=isLengthUnit(unitv);
   const priceM=Number($('#f_priceM').value)||0, len=Number($('#f_lenM').value)||0, stock=Number($('#f_stock').value)||0;
-  const unit=priceM*len, amt=unit*stock;
-  $('#priceCalc').innerHTML = priceM>0
+  $('#lblPriceM').textContent = lenBased ? '단가 (원/m)' : `단가 (원/${esc(unitv)})`;
+  $('#lenWrap').style.display = lenBased ? '' : 'none';
+  const unit = lenBased ? priceM*len : priceM;
+  const amt = unit*stock;
+  if(priceM<=0){ $('#priceCalc').innerHTML='단가를 입력하면 단위당 단가와 재고 금액이 계산됩니다.'; return; }
+  $('#priceCalc').innerHTML = lenBased
     ? `단위당 단가 <b>${fmtWon(unit)}</b> (= ${fmt(priceM)}원/m × ${fmt(len)}m) · 재고 금액 <b style="color:var(--teal)">${fmtWon(amt)}</b> (현재고 ${fmt(stock)} × 단위단가)`
-    : `단가를 입력하면 단위당 단가와 재고 금액이 계산됩니다.`;
+    : `재고 금액 <b style="color:var(--teal)">${fmtWon(amt)}</b> (현재고 ${fmt(stock)} ${esc(unitv)} × 단가 ${fmt(priceM)}원)`;
 }
 function openItemModal(it){
   editingItem = it||null;
@@ -1024,8 +1035,8 @@ async function openItemDrawing(i){ if(i) showLightbox(`[${i.code}] ${i.name}`, i
 /* ---------- export ---------- */
 function exportCSV(){
   if(!items.length){ toast('내보낼 품목이 없습니다'); return; }
-  const head=['품목코드','품명','구분','색상','연결품목','연결코드','규격','단위','현재고','안전재고','단가(원/m)','본길이(m)','단위당단가','금액','상태'];
-  const rows=items.map(i=>[i.code,i.name,i.category,colorOf(i),i.linkName||'',i.linkCode||'',i.spec||'',i.unit||'',i.stock,i.safety,i.priceM||0,(i.lengthM!=null?i.lengthM:6),Math.round(unitCost(i)),Math.round(itemValue(i)),statusKo(status(i))]);
+  const head=['품목코드','품명','구분','색상','연결품목','연결코드','규격','단위','현재고','안전재고','단가','단가기준','본길이(m)','단위당단가','금액','상태'];
+  const rows=items.map(i=>[i.code,i.name,i.category,colorOf(i),i.linkName||'',i.linkCode||'',i.spec||'',i.unit||'',i.stock,i.safety,i.priceM||0,(isLengthUnit(i.unit)?'원/m':'원/'+(i.unit||'EA')),(isLengthUnit(i.unit)?(i.lengthM!=null?i.lengthM:6):''),Math.round(unitCost(i)),Math.round(itemValue(i)),statusKo(status(i))]);
   const csv='\uFEFF'+[head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='S9000_현재고.csv'; a.click(); URL.revokeObjectURL(url);
@@ -1300,7 +1311,7 @@ function bind(){
     T.addEventListener('dragend',cleanup);
   })();
   $('#btnSaveItem').onclick=saveItem;
-  ['#f_priceM','#f_lenM','#f_stock'].forEach(s=>$(s).oninput=priceCalcPreview);
+  ['#f_priceM','#f_lenM','#f_stock','#f_unit'].forEach(s=>$(s).oninput=priceCalcPreview);
   // bulk import/edit
   $('#btnBulk').onclick=openBulk;
   $('#bulkText').oninput=previewBulk;
