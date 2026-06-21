@@ -345,11 +345,19 @@
     <div class="m-hd"><b>품목 일괄 등록 · 수정</b></div>
     <div class="m-bd">
       <div class="spec" style="font-size:12.5px;line-height:1.65;margin-bottom:10px">
-        엑셀·시트에서 복사해 붙여넣으세요 (탭 또는 쉼표 구분).<br>
-        열 순서: <b>코드, 품명, 구분, 색상, 규격, 단위, 안전재고, 단가(원/m), 본길이</b> — 코드만 필수, 나머지는 비우면 기존 값 유지.<br>
-        첫 줄에 머리글(코드·품명 등)이 있으면 자동 인식. <b>코드가 같으면 수정, 없으면 신규 추가</b>됩니다.
+        <b>① 엑셀 파일로 등록</b> — 양식을 받아 채운 뒤 업로드하면 한 번에 등록됩니다. (도면 이미지는 품목별 "수정"에서 개별 첨부)<br>
+        열: <b>코드, 품명, 구분, 색상, 규격, 단위, 안전재고, 단가(원/m), 본길이, 품목(연결), 코드(연결)</b> — 코드만 필수.<br>
+        <b>코드가 같으면 수정, 없으면 신규 추가</b>됩니다.
       </div>
-      <textarea id="bulkText" rows="9" placeholder="600200Q&#9;프레임 화이트 82.5&#9;프로파일&#9;White&#9;6M&#9;본&#9;20" style="width:100%;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn sm" id="btnBulkTemplate">엑셀 양식 다운로드</button>
+        <label class="btn sm primary" style="cursor:pointer">엑셀/CSV 파일 선택
+          <input id="bulkFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+        </label>
+        <span class="spec" id="bulkFileName" style="font-size:12px"></span>
+      </div>
+      <div class="spec" style="font-size:12px;margin-bottom:6px;border-top:1px solid var(--line2);padding-top:10px"><b>② 또는</b> 엑셀·시트에서 복사해 아래에 직접 붙여넣기 (탭/쉼표 구분, 첫 줄 머리글 자동 인식)</div>
+      <textarea id="bulkText" rows="7" placeholder="600200Q&#9;프레임 화이트&#9;프로파일&#9;White&#9;6M&#9;본&#9;20&#9;9567" style="width:100%;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical"></textarea>
       <div id="bulkPreview" class="spec" style="font-size:12.5px;margin-top:8px"></div>
     </div>
     <div class="m-ft">
@@ -928,7 +936,39 @@ function applyBulk(parsed){
   });
   return {added,updated};
 }
-function openBulk(){ $('#bulkText').value=''; $('#bulkPreview').textContent=''; $('#bulkScrim').classList.add('on'); $('#bulkText').focus(); }
+function openBulk(){ $('#bulkText').value=''; $('#bulkPreview').textContent=''; $('#bulkFile').value=''; $('#bulkFileName').textContent=''; $('#bulkScrim').classList.add('on'); }
+function downloadBulkTemplate(){
+  if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
+  const head=['코드','품명','구분','색상','규격','단위','안전재고','단가(원/m)','본길이','품목(연결)','코드(연결)'];
+  const sample=[
+    ['600200Q','프레임, 화이트','프로파일','White','6M','본','20','9567','6','F70 화이트','F70w'],
+    ['HW-LOCK','잠금 하드웨어 세트','부자재','기타','-','EA','30','12000','','잠금세트','HWLOCK'],
+  ];
+  const ws=XLSX.utils.aoa_to_sheet([head,...sample]);
+  ws['!cols']=[{wch:12},{wch:24},{wch:8},{wch:10},{wch:8},{wch:6},{wch:9},{wch:11},{wch:7},{wch:16},{wch:12}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'품목양식');
+  XLSX.writeFile(wb,'S9000_품목등록_양식.xlsx');
+}
+function readBulkFile(file){
+  if(!file) return;
+  if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
+  $('#bulkFileName').textContent=file.name;
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      const wb=XLSX.read(fr.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+      const tsv=rows.filter(r=>r.some(c=>String(c).trim()!==''))
+                    .map(r=>r.map(c=>String(c).replace(/[\t\n\r]/g,' ').trim()).join('\t')).join('\n');
+      $('#bulkText').value=tsv;
+      previewBulk();
+      toast('파일을 읽었습니다 — 내용 확인 후 "적용"을 누르세요');
+    }catch(e){ console.error(e); toast('엑셀 파일을 읽지 못했습니다'); }
+  };
+  fr.onerror=()=>toast('파일 읽기 실패');
+  fr.readAsArrayBuffer(file);
+}
 function previewBulk(){
   const parsed=parseBulk($('#bulkText').value);
   if(!parsed.length){ $('#bulkPreview').textContent='붙여넣은 내용이 없습니다.'; return; }
@@ -1345,6 +1385,8 @@ function bind(){
   $('#btnBulk').onclick=openBulk;
   $('#bulkText').oninput=previewBulk;
   $('#btnBulkApply').onclick=applyBulkAndSave;
+  $('#btnBulkTemplate').onclick=downloadBulkTemplate;
+  $('#bulkFile').onchange=e=>{ const f=e.target.files[0]; if(f) readBulkFile(f); };
   // item drawing upload / remove
   $('#i_draw').onchange=async e=>{
     const f=e.target.files[0]; if(!f) return;
