@@ -633,19 +633,32 @@ function chartName(i){   // 색상 표기를 뺀 전체 품명
   return (i.name||'').replace(/,?\s*(아크릴블랙|화이트|deep black|white|블랙|black)\b/gi,'').replace(/[,\s]+$/,'').replace(/^[,\s]+/,'').trim() || (i.name||'');
 }
 function chartKey(i){ return chartName(i); }   // 막대 = 색상만 뺀 전체 품명 (변형별로 각각)
+function isMainProfile(i){
+  if(MAIN_MODELS.includes(modelCode(i))) return true;                 // F70 · S82 · M92
+  const n=(i.name||'').replace(/\s/g,'');
+  if(/GB\(?47/i.test(n)) return true;                                 // GB 47mm 포함
+  if((i.linkCode||'').toUpperCase().replace(/[WB]$/,'')==='GB47') return true;
+  return false;
+}
+function etcSub(i){
+  const n=(i.name||'').replace(/\s/g,'');
+  if(/연장바/.test(n) || /프로젝트샤시/.test(n) || /광폭중간바/.test(n) || /양개중간바/.test(n)) return 'etc1';
+  return 'etc2';
+}
 function profileGroup(i){
   if(i.category==='보강재') return 'rebar';
   if(i.category!=='프로파일') return null;
   const n=i.name||'';
-  if(MAIN_MODELS.includes(modelCode(i)) && !/도어|오픈/.test(n)) return 'main'; // 프레임F70·샤시S82·중간바M92만
-  if(/도어|오픈/.test(n)) return 'door';
-  return 'etc';
+  if(isMainProfile(i) && !/도어|오픈/.test(n) && modelCode(i)!=='F84') return 'main';   // F70·S82·M92·GB47
+  if(/도어|오픈/.test(n) || modelCode(i)==='F84') return 'door';                          // 도어/오픈 + 프레임(F84)
+  return etcSub(i);                                                                       // etc1 / etc2
 }
 let chartMetric='qty';
 const CHART_GROUPS=[
   {key:'main', title:'주요 프로파일'},
   {key:'door', title:'도어'},
-  {key:'etc',  title:'기타 프로파일'},
+  {key:'etc1', title:'기타 프로파일 1'},
+  {key:'etc2', title:'기타 프로파일 2'},
   {key:'rebar',title:'보강재'},
 ];
 function chartKeyRank(k){
@@ -659,15 +672,21 @@ function shortWon(n){ n=Math.round(n||0);
 function metricVal(i){ return chartMetric==='qty' ? (Number(i.stock)||0) : itemValue(i); }
 function shortThreshold(i){ return (Number(i.safety)>0) ? Number(i.safety) : 30; } // 안전재고 미설정 시 30 기준
 function isShort(i){ return (Number(i.stock)||0) < shortThreshold(i); }
-function miniChart(gkey, col, gl, max){
+function colorCard(g, col, gl, max){
   const isAll = (col===null);
   const cls = isAll ? 'r' : (col==='White'?'w':'b');
   const mine = gl.filter(i => isAll ? true : colorOf(i)===col);
-  const rankOf = t => { if(gkey!=='main') return 999; const rep=mine.find(i=>chartKey(i)===t); const mi=rep?MAIN_MODELS.indexOf(modelCode(rep)):999; return mi<0?999:mi; };
-  const types=[...new Set(mine.map(chartKey))].sort((a,b)=>rankOf(a)-rankOf(b)||a.localeCompare(b,'ko'));
+  const title = isAll ? g.title : `${g.title} · ${col}`;
+  const note = `${chartMetric==='qty'?'수량 (본/EA)':'금액 (원)'} 기준 · 막대를 누르면 품목 목록`;
   if(!mine.length){
-    return `<div class="colorblock"><div class="cblabel">${isAll?'전체 (철)':esc(col)}</div><div class="csub" style="padding:8px 0">해당 색상 품목 없음</div></div>`;
+    return `<div class="card chart-card"><h4>${esc(title)}</h4><div class="csub" style="padding:10px 0">해당 색상 품목이 없습니다.</div></div>`;
   }
+  const partRank = t => /프레임/.test(t)?0 : /샤시/.test(t)?1 : /중간바/.test(t)?2 : 3;
+  const rankOf = t => {
+    if(g.key==='main'){ const rep=mine.find(i=>chartKey(i)===t); const mi=rep?MAIN_MODELS.indexOf(modelCode(rep)):-1; return mi<0?900+partRank(t):mi; }
+    return partRank(t);
+  };
+  const types=[...new Set(mine.map(chartKey))].sort((a,b)=>rankOf(a)-rankOf(b)||a.localeCompare(b,'ko'));
   let anyShort=false;
   const bars=types.map(t=>{
     const sub=mine.filter(i=>chartKey(i)===t);
@@ -676,9 +695,9 @@ function miniChart(gkey, col, gl, max){
     const h=max>0?(v>0?Math.max(2,v/max*100):0):0;
     const lab=chartMetric==='qty'?fmt(v):shortWon(v);
     const full=chartMetric==='qty'?fmt(v):fmtWon(v);
-    return `<div class="colitem" data-grp="${esc(gkey)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div></div>`;
+    return `<div class="colitem" data-grp="${esc(g.key)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div></div>`;
   }).join('');
-  return `<div class="colorblock"><div class="cblabel">${isAll?'전체 (철)':esc(col)}</div><div class="colchart">${bars}</div>${anyShort?'<div class="short-legend">■ 안전 미달</div>':''}</div>`;
+  return `<div class="card chart-card"><h4>${esc(title)}</h4><div class="csub">${note}</div><div class="colchart">${bars}</div>${anyShort?'<div class="short-legend">■ 안전 미달 품목 (안전재고 미만)</div>':''}</div>`;
 }
 function groupMax(gl, cols){
   let max=1;
@@ -689,22 +708,21 @@ function groupMax(gl, cols){
   });
   return max;
 }
-function groupCard(g){
-  const gl=items.filter(i=>profileGroup(i)===g.key);
-  const note=`${chartMetric==='qty'?'수량 (본/EA)':'금액 (원)'} 기준 · 막대를 누르면 품목 목록`;
-  let inner;
-  if(g.key==='rebar'){
-    const max=groupMax(gl,[null]);
-    inner = gl.length ? miniChart(g.key,null,gl,max) : `<div class="csub" style="padding:8px 0">품목이 없습니다.</div>`;
-  }else{
-    const max=groupMax(gl,['White','아크릴블랙']);
-    inner = `<div class="twocol">${miniChart(g.key,'White',gl,max)}${miniChart(g.key,'아크릴블랙',gl,max)}</div>`;
-  }
-  return `<div class="card chart-card"><h4>${g.title}</h4><div class="csub">${note}</div>${inner}</div>`;
-}
 function renderCharts(){
   if(!$('#chartGrid')) return;
-  $('#chartGrid').innerHTML = CHART_GROUPS.map(groupCard).join('');
+  const cards=[];
+  CHART_GROUPS.forEach(g=>{
+    const gl=items.filter(i=>profileGroup(i)===g.key);
+    if(g.key==='rebar'){
+      const max=groupMax(gl,[null]);
+      cards.push(gl.length ? colorCard(g,null,gl,max) : `<div class="card chart-card"><h4>${g.title}</h4><div class="csub" style="padding:10px 0">품목이 없습니다.</div></div>`);
+    }else{
+      const max=groupMax(gl,['White','아크릴블랙']);
+      cards.push(colorCard(g,'White',gl,max));
+      cards.push(colorCard(g,'아크릴블랙',gl,max));
+    }
+  });
+  $('#chartGrid').innerHTML=cards.join('');
 }
 function openChartList(gkey, col, type){
   const g=CHART_GROUPS.find(x=>x.key===gkey);
