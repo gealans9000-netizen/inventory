@@ -91,6 +91,17 @@
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:100%}
   .colthumb{margin-top:4px;width:34px;height:34px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px;cursor:zoom-in}
   .colthumb:hover{border-color:var(--teal)}
+  .cnt-card{display:flex;flex-direction:column;gap:9px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:10px}
+  .cnt-top{display:flex;align-items:center;gap:10px}
+  .cnt-top img{width:48px;height:48px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;cursor:zoom-in;flex:none}
+  .cnt-ph{width:48px;height:48px;border:1px dashed var(--line);border-radius:8px;flex:none}
+  .cnt-name{font-weight:700;font-size:14px;line-height:1.25}
+  .cnt-meta{font-size:11.5px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .cnt-row{display:flex;gap:8px;align-items:center}
+  .cnt-input{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font-size:16px;font-family:var(--mono);color:var(--ink)}
+  .cnt-input:focus{border-color:var(--teal);outline:none}
+  .cnt-sum{flex:none;background:var(--teal);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer}
+  .cnt-sum:active{transform:translateY(1px)}
   @media(max-width:720px){ #chartGrid{grid-template-columns:1fr} }
   @media(max-width:460px){ .twocol{grid-template-columns:1fr 1fr;gap:8px} }
   .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -208,6 +219,7 @@
     <button class="tab" role="tab" aria-selected="false" data-tab="items">품목</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="io">입출고</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="bom">제품 · 생산</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="count">재고조사</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="report">보고서 · 발주</button>
   </div>
 </header>
@@ -295,6 +307,23 @@
       <button class="btn primary" id="btnAddProd">+ 제품 등록</button>
     </div>
     <div id="prodList"></div>
+  </section>
+
+  <!-- COUNT (mobile stocktake) -->
+  <section class="panel" id="panel-count">
+    <div class="toolbar">
+      <input class="grow" id="countSearch" placeholder="품목코드 · 품명 검색">
+      <div class="filters" id="countColor">
+        <button class="fbtn" data-color="all" aria-pressed="true">전체</button>
+        <button class="fbtn" data-color="White" aria-pressed="false">White</button>
+        <button class="fbtn" data-color="아크릴블랙" aria-pressed="false">아크릴블랙</button>
+        <button class="fbtn" data-color="기타" aria-pressed="false">기타</button>
+      </div>
+    </div>
+    <div class="spec" style="font-size:12px;color:var(--muted);margin:2px 0 12px;line-height:1.6">
+      흩어져 있는 자재를 <b>2+3+46+24+12</b> 처럼 위치별로 입력하고 <b>합산</b>을 누르면 합계가 현재고로 저장됩니다.<br>입력식은 그대로 남아 있어, 나중에 <b>+5</b> 처럼 이어서 더하고 다시 합산할 수 있어요. 도면을 누르면 크게 보입니다.
+    </div>
+    <div id="countList"></div>
   </section>
 
   <!-- REPORT / ORDER -->
@@ -535,11 +564,13 @@ async function persistProducts(){ await sSet(K_PROD, JSON.stringify(products)); 
 async function saveHist(){  history=history.slice(0,500); await sSet(K_HIST, JSON.stringify(history)); }
 
 function renderAllSafe(){
-  // 인라인 셀 편집 중이면 품목표는 다시 그리지 않음(포커스 유지)
+  // 인라인 셀/재고조사 입력 중이면 해당 목록은 다시 그리지 않음(포커스 유지)
   const ae=document.activeElement;
-  const editing = ae && ae.classList && ae.classList.contains('cell-input');
+  const editingItems = ae && ae.classList && ae.classList.contains('cell-input');
+  const editingCount = ae && ae.classList && ae.classList.contains('cnt-input');
   renderDash(); renderCharts(); fillItemSelects(); renderHist(); renderProducts(); renderOrder();
-  if(!editing) renderItems(); else updateItemsSum();
+  if(!editingItems) renderItems(); else updateItemsSum();
+  if(!editingCount) renderCount();
 }
 function subscribeFB(){
   // 다른 기기/사람이 바꾸면 실시간으로 받아 화면 갱신
@@ -820,6 +851,49 @@ function filteredItems(){
   return list;
 }
 function updateItemsSum(){ const el=$('#itemsSum'); if(el) el.textContent=fmtWon(filteredItems().reduce((s,i)=>s+itemValue(i),0)); }
+/* ---------- 모바일 재고조사 ---------- */
+let countSearch='', countColor='all';
+function filteredCount(){
+  let list=items;
+  if(countColor!=='all') list=list.filter(i=>colorOf(i)===countColor);
+  if(countSearch){ const q=countSearch.toLowerCase(); list=list.filter(i=>(i.code+i.name+(i.spec||'')).toLowerCase().includes(q)); }
+  return list;
+}
+function renderCount(){
+  if(!$('#countList')) return;
+  if(!items.length){ $('#countList').innerHTML=`<div class="empty"><b>등록된 품목이 없습니다</b></div>`; return; }
+  const list=filteredCount();
+  if(!list.length){ $('#countList').innerHTML=`<div class="empty"><b>검색 결과가 없습니다</b></div>`; return; }
+  $('#countList').innerHTML=list.map(i=>{
+    const expr=(i.countExpr!=null && i.countExpr!=='')?i.countExpr:String(i.stock||0);
+    const unit=(i.unit&&i.unit!=='본')?' '+esc(i.unit):' 본';
+    return `<div class="cnt-card">
+      <div class="cnt-top">
+        ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" alt="">`:`<div class="cnt-ph"></div>`}
+        <div style="min-width:0;flex:1">
+          <div class="cnt-name">${esc(i.name)}</div>
+          <div class="cnt-meta">${swatchHTML(i)} <span class="code">${esc(i.code)}</span> · 현재고 <b data-cstock="${i.id}">${fmt(i.stock)}</b>${unit}</div>
+        </div>
+      </div>
+      <div class="cnt-row">
+        <input class="cnt-input" type="text" inputmode="text" data-cexpr="${i.id}" value="${esc(expr)}" placeholder="예: 2+3+46+24+12">
+        <button class="cnt-sum" data-csum="${i.id}">합산</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function sumCount(id){
+  const it=itemById(id); if(!it) return;
+  const inp=document.querySelector(`[data-cexpr="${id}"]`); if(!inp) return;
+  const expr=inp.value;
+  const nums=expr.match(/-?\d+(\.\d+)?/g);
+  const total=nums? nums.reduce((a,b)=>a+parseFloat(b),0):0;
+  it.stock=Math.max(0,Math.round(total));
+  it.countExpr=expr;                                   // 입력식 보존 (이어서 셀 수 있음)
+  const st=document.querySelector(`[data-cstock="${id}"]`); if(st) st.textContent=fmt(it.stock);
+  saveItems(); renderDash(); renderCharts(); updateItemsSum();
+  toast(`합산 ${fmt(it.stock)} 저장됨`);
+}
 function renderItems(){
   if(!items.length){ $('#itemsTable').innerHTML=emptyItems(); return; }
   const list=filteredItems();
@@ -1015,15 +1089,21 @@ async function openItemCopy(src){
 
 /* ---------- bulk import / edit ---------- */
 const BULK_COLS=['code','name','category','color','spec','unit','safety','priceM','lengthM','linkName','linkCode'];
-const BULK_HEAD={'코드':'code','품번':'code','품목코드':'code','품명':'name','명칭':'name','구분':'category','카테고리':'category','색상':'color','규격':'spec','단위':'unit','안전재고':'safety','안전':'safety','단가':'priceM','단가(원/m)':'priceM','단가(원/M)':'priceM','원/m':'priceM','원/M':'priceM','미터당단가':'priceM','본길이':'lengthM','본당길이':'lengthM','길이':'lengthM','품목(연결)':'linkName','연결품목':'linkName','품목연결':'linkName','코드(연결)':'linkCode','연결코드':'linkCode','코드연결':'linkCode'};
+const BULK_HEAD={'코드':'code','품번':'code','품목코드':'code','품명':'name','명칭':'name','구분':'category','카테고리':'category','색상':'color','규격':'spec','단위':'unit','안전재고':'safety','안전':'safety','현재고':'stock','실사수량':'stock','실사':'stock','단가':'priceM','단가(원/m)':'priceM','단가(원/M)':'priceM','원/m':'priceM','원/M':'priceM','미터당단가':'priceM','본길이':'lengthM','본당길이':'lengthM','길이':'lengthM','품목(연결)':'linkName','연결품목':'linkName','품목연결':'linkName','코드(연결)':'linkCode','연결코드':'linkCode','코드연결':'linkCode'};
 function parseBulk(text){
   const lines=text.split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim());
   if(!lines.length) return [];
   const split=l=>(l.includes('\t')?l.split('\t'):l.split(',')).map(s=>s.trim());
   let rows=lines.map(split);
-  let mapping=BULK_COLS, data=rows;
-  const head=rows[0].map(h=>h.replace(/\s/g,''));
-  if(head.some(h=>BULK_HEAD[h])){ mapping=head.map(h=>BULK_HEAD[h]||null); data=rows.slice(1); }
+  // 머리글 줄 찾기 (제목/빈 줄을 건너뛰고 첫 6줄 안에서 알려진 헤더가 2개 이상인 줄)
+  let hi=-1;
+  for(let r=0;r<Math.min(rows.length,6);r++){
+    const hits=rows[r].map(h=>h.replace(/\s/g,'')).filter(h=>BULK_HEAD[h]).length;
+    if(hits>=2){ hi=r; break; }
+  }
+  let mapping, data;
+  if(hi>=0){ mapping=rows[hi].map(h=>BULK_HEAD[h.replace(/\s/g,'')]||null); data=rows.slice(hi+1); }
+  else { mapping=BULK_COLS; data=rows; }
   return data.map(r=>{ const o={}; r.forEach((v,idx)=>{ const k=mapping[idx]; if(k&&v!=='') o[k]=v; }); return o; })
              .filter(o=>o.code);
 }
@@ -1038,7 +1118,7 @@ function applyBulk(parsed){
   const num=v=>{ if(v===undefined) return undefined; const n=parseFloat(String(v).replace(/[^\d.]/g,'')); return isNaN(n)?undefined:n; };
   parsed.forEach(o=>{
     let it=items.find(i=>i.code===o.code);
-    const pm=num(o.priceM), lm=num(o.lengthM), sf=num(o.safety);
+    const pm=num(o.priceM), lm=num(o.lengthM), sf=num(o.safety), st=num(o.stock);
     if(it){
       if(o.name!==undefined) it.name=o.name;
       if(o.category!==undefined && validCat(o.category)) it.category=o.category;
@@ -1046,6 +1126,7 @@ function applyBulk(parsed){
       if(o.spec!==undefined) it.spec=o.spec;
       if(o.unit!==undefined) it.unit=o.unit;
       if(sf!==undefined) it.safety=Math.max(0,Math.round(sf));
+      if(st!==undefined) it.stock=Math.max(0,Math.round(st));   // 실사수량/현재고 → 실재고 반영
       if(pm!==undefined) it.priceM=Math.max(0,pm);
       if(lm!==undefined) it.lengthM=Math.max(0,lm);
       if(o.linkName!==undefined) it.linkName=o.linkName;
@@ -1061,7 +1142,7 @@ function applyBulk(parsed){
         safety:sf!==undefined?Math.max(0,Math.round(sf)):0,
         priceM:pm!==undefined?Math.max(0,pm):0,
         lengthM:lm!==undefined?Math.max(0,lm):6,
-        stock:0});
+        stock:st!==undefined?Math.max(0,Math.round(st)):0});
       added++;
     }
   });
@@ -1070,13 +1151,13 @@ function applyBulk(parsed){
 function openBulk(){ $('#bulkText').value=''; $('#bulkPreview').textContent=''; $('#bulkFile').value=''; $('#bulkFileName').textContent=''; $('#bulkScrim').classList.add('on'); }
 function downloadBulkTemplate(){
   if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
-  const head=['코드','품명','구분','색상','규격','단위','안전재고','단가(원/m)','본길이','품목(연결)','코드(연결)'];
+  const head=['코드','품명','구분','색상','규격','단위','현재고','안전재고','단가(원/m)','본길이','품목(연결)','코드(연결)'];
   const sample=[
-    ['600200Q','프레임, 화이트','프로파일','White','6M','본','20','9567','6','F70 화이트','F70w'],
-    ['HW-LOCK','잠금 하드웨어 세트','부자재','기타','-','EA','30','12000','','잠금세트','HWLOCK'],
+    ['600200Q','프레임, 화이트','프로파일','White','6M','본','140','20','9567','6','F70 화이트','F70w'],
+    ['HW-LOCK','잠금 하드웨어 세트','부자재','기타','-','EA','30','30','12000','','잠금세트','HWLOCK'],
   ];
   const ws=XLSX.utils.aoa_to_sheet([head,...sample]);
-  ws['!cols']=[{wch:12},{wch:24},{wch:8},{wch:10},{wch:8},{wch:6},{wch:9},{wch:11},{wch:7},{wch:16},{wch:12}];
+  ws['!cols']=[{wch:12},{wch:24},{wch:8},{wch:10},{wch:8},{wch:6},{wch:8},{wch:9},{wch:11},{wch:7},{wch:16},{wch:12}];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'품목양식');
   XLSX.writeFile(wb,'S9000_품목등록_양식.xlsx');
 }
@@ -1441,7 +1522,7 @@ function printOrder(){
   printWindow('발주서', inner);
 }
 
-function renderAll(){ renderDash(); renderCharts(); renderItems(); fillItemSelects(); renderHist(); renderProducts(); renderOrder(); }
+function renderAll(){ renderDash(); renderCharts(); renderItems(); renderCount(); fillItemSelects(); renderHist(); renderProducts(); renderOrder(); }
 
 /* ---------- events ---------- */
 function bind(){
@@ -1463,6 +1544,16 @@ function bind(){
     const img=e.target.closest('.colthumb');
     if(img && img.dataset.iview){ openItemDrawing(itemById(img.dataset.iview)); return; }
     const it=e.target.closest('.colitem'); if(it && it.dataset.grp) openChartList(it.dataset.grp, it.dataset.col, it.dataset.type);
+  };
+  // 모바일 재고조사
+  $('#countSearch').oninput=e=>{ countSearch=e.target.value.trim(); renderCount(); };
+  $$('#countColor .fbtn').forEach(b=>b.onclick=()=>{
+    $$('#countColor .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); countColor=b.dataset.color; renderCount();
+  });
+  $('#countList').onclick=e=>{
+    const img=e.target.closest('img[data-iview]'); if(img){ openItemDrawing(itemById(img.dataset.iview)); return; }
+    const sb=e.target.closest('[data-csum]'); if(sb){ sumCount(sb.dataset.csum); }
   };
   // 보고서 · 발주
   $('#btnStockXlsx').onclick=exportStocktakeXlsx;
