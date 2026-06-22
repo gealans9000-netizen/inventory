@@ -89,7 +89,8 @@
   .ctop{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9.5px;font-family:var(--mono);color:var(--muted);white-space:nowrap}
   .collabel{margin-top:6px;font-size:9.5px;text-align:center;color:var(--ink);line-height:1.18;word-break:keep-all;
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:100%}
-  .colthumb{margin-top:4px;width:34px;height:34px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px}
+  .colthumb{margin-top:4px;width:34px;height:34px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px;cursor:zoom-in}
+  .colthumb:hover{border-color:var(--teal)}
   @media(max-width:720px){ #chartGrid{grid-template-columns:1fr} }
   @media(max-width:460px){ .twocol{grid-template-columns:1fr 1fr;gap:8px} }
   .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -648,7 +649,8 @@ function etcSub(i){
 }
 function rebarSub(i){
   const n=(i.name||'').replace(/\s/g,'');
-  if(/프레임|샤시|중간바/.test(n)) return 'rebar1';
+  if(/도어|오픈|광폭중간바/.test(n)) return 'rebar2';     // 도어 보강재·광폭중간바 → 보강재 2
+  if(/프레임|샤시|중간바/.test(n)) return 'rebar1';        // 프레임·샤시·중간바 보강재 → 보강재 1
   return 'rebar2';
 }
 function profileGroup(i){
@@ -699,11 +701,11 @@ function colorCard(g, col, gl, max){
     const sub=mine.filter(i=>chartKey(i)===t);
     const v=sub.reduce((s,i)=>s+metricVal(i),0);
     const short=sub.some(isShort); if(short) anyShort=true;
-    const thumb=(sub.find(i=>i.thumb)||{}).thumb;
+    const rep=sub.find(i=>i.thumb);
     const h=max>0?(v>0?Math.max(2,v/max*100):0):0;
     const lab=chartMetric==='qty'?fmt(v):shortWon(v);
     const full=chartMetric==='qty'?fmt(v):fmtWon(v);
-    return `<div class="colitem" data-grp="${esc(g.key)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div>${thumb?`<img class="colthumb" src="${thumb}" alt="">`:''}</div>`;
+    return `<div class="colitem" data-grp="${esc(g.key)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div>${rep?`<img class="colthumb" src="${rep.thumb}" data-iview="${rep.id}" title="도면 크게 보기" alt="">`:''}</div>`;
   }).join('');
   return `<div class="card chart-card"><h4>${esc(title)}</h4><div class="csub">${note}</div><div class="colchart">${bars}</div>${anyShort?'<div class="short-legend">■ 안전 미달 품목 (안전재고 미만)</div>':''}</div>`;
 }
@@ -1457,7 +1459,11 @@ function bind(){
     $$('#metricToggle .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
     b.setAttribute('aria-pressed','true'); chartMetric=b.dataset.metric; renderCharts();
   });
-  $('#chartGrid').onclick=e=>{ const it=e.target.closest('.colitem'); if(it && it.dataset.grp) openChartList(it.dataset.grp, it.dataset.col, it.dataset.type); };
+  $('#chartGrid').onclick=e=>{
+    const img=e.target.closest('.colthumb');
+    if(img && img.dataset.iview){ openItemDrawing(itemById(img.dataset.iview)); return; }
+    const it=e.target.closest('.colitem'); if(it && it.dataset.grp) openChartList(it.dataset.grp, it.dataset.col, it.dataset.type);
+  };
   // 보고서 · 발주
   $('#btnStockXlsx').onclick=exportStocktakeXlsx;
   $('#btnStockPrint').onclick=printStocktake;
