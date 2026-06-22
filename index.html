@@ -1460,7 +1460,6 @@ function bind(){
     if(ed) openItemModal(itemById(ed));
     if(dl){ const it=itemById(dl); if(confirm(`"${it.name}" 품목을 삭제할까요?`)){ if(it.thumb) sDel(itemDrawKey(it.id)); items=items.filter(i=>i.id!==dl); saveItems().then(renderAll);} }
   };
-  $('#dashTable').onclick=e=>{ const vw=e.target.dataset.iview; if(vw) openItemDrawing(itemById(vw)); };
   // 품목 표 드래그로 순서 변경 (손잡이 ⠿ 로만 시작 → 입력칸 사용에 방해 없음)
   (function(){
     const T=$('#itemsTable'); let dragId=null;
