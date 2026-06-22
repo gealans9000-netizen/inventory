@@ -89,6 +89,7 @@
   .ctop{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9.5px;font-family:var(--mono);color:var(--muted);white-space:nowrap}
   .collabel{margin-top:6px;font-size:9.5px;text-align:center;color:var(--ink);line-height:1.18;word-break:keep-all;
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:100%}
+  .colthumb{margin-top:4px;width:34px;height:34px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px}
   @media(max-width:720px){ #chartGrid{grid-template-columns:1fr} }
   @media(max-width:460px){ .twocol{grid-template-columns:1fr 1fr;gap:8px} }
   .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -645,8 +646,13 @@ function etcSub(i){
   if(/연장바/.test(n) || /프로젝트샤시/.test(n) || /광폭중간바/.test(n) || /양개중간바/.test(n)) return 'etc1';
   return 'etc2';
 }
+function rebarSub(i){
+  const n=(i.name||'').replace(/\s/g,'');
+  if(/프레임|샤시|중간바/.test(n)) return 'rebar1';
+  return 'rebar2';
+}
 function profileGroup(i){
-  if(i.category==='보강재') return 'rebar';
+  if(i.category==='보강재') return rebarSub(i);   // rebar1 / rebar2
   if(i.category!=='프로파일') return null;
   const n=i.name||'';
   if(isMainProfile(i) && !/도어|오픈/.test(n) && modelCode(i)!=='F84') return 'main';   // F70·S82·M92·GB47
@@ -656,10 +662,11 @@ function profileGroup(i){
 let chartMetric='qty';
 const CHART_GROUPS=[
   {key:'main', title:'주요 프로파일'},
-  {key:'door', title:'도어'},
+  {key:'door', title:'도어 / 프레임(F84)'},
   {key:'etc1', title:'기타 프로파일 1'},
   {key:'etc2', title:'기타 프로파일 2'},
-  {key:'rebar',title:'보강재'},
+  {key:'rebar1',title:'보강재 1'},
+  {key:'rebar2',title:'보강재 2'},
 ];
 function chartKeyRank(k){
   const order=['프레임(F70)','샤시(S82)','중간바(M92)'];
@@ -692,10 +699,11 @@ function colorCard(g, col, gl, max){
     const sub=mine.filter(i=>chartKey(i)===t);
     const v=sub.reduce((s,i)=>s+metricVal(i),0);
     const short=sub.some(isShort); if(short) anyShort=true;
+    const thumb=(sub.find(i=>i.thumb)||{}).thumb;
     const h=max>0?(v>0?Math.max(2,v/max*100):0):0;
     const lab=chartMetric==='qty'?fmt(v):shortWon(v);
     const full=chartMetric==='qty'?fmt(v):fmtWon(v);
-    return `<div class="colitem" data-grp="${esc(g.key)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div></div>`;
+    return `<div class="colitem" data-grp="${esc(g.key)}" data-col="${isAll?'ALL':esc(col)}" data-type="${esc(t)}"><div class="colbarwrap"><div class="colbar ${cls}${short?' short':''}" style="height:${h}%" title="${esc(t)}: ${full}${short?' · 안전 미달':''}"><span class="ctop"${short?' style="color:var(--warn);font-weight:700"':''}>${lab}</span></div></div><div class="collabel">${esc(t)}</div>${thumb?`<img class="colthumb" src="${thumb}" alt="">`:''}</div>`;
   }).join('');
   return `<div class="card chart-card"><h4>${esc(title)}</h4><div class="csub">${note}</div><div class="colchart">${bars}</div>${anyShort?'<div class="short-legend">■ 안전 미달 품목 (안전재고 미만)</div>':''}</div>`;
 }
@@ -713,7 +721,7 @@ function renderCharts(){
   const cards=[];
   CHART_GROUPS.forEach(g=>{
     const gl=items.filter(i=>profileGroup(i)===g.key);
-    if(g.key==='rebar'){
+    if(g.key==='rebar1' || g.key==='rebar2'){
       const max=groupMax(gl,[null]);
       cards.push(gl.length ? colorCard(g,null,gl,max) : `<div class="card chart-card"><h4>${g.title}</h4><div class="csub" style="padding:10px 0">품목이 없습니다.</div></div>`);
     }else{
