@@ -108,6 +108,7 @@
   #itemsTable tr.drop-before td{box-shadow:inset 0 2px 0 0 var(--teal)}
   #itemsTable tr.drop-after td{box-shadow:inset 0 -2px 0 0 var(--teal)}
   .cell-input{width:84px;max-width:100%;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink)}
+  .cell-input.stock{font-size:16px;font-weight:800;color:var(--ink)}
   .cell-input:hover{border-color:var(--line)}
   .cell-input:focus{border-color:var(--teal);background:#fff;outline:none}
   table{width:100%;border-collapse:collapse}
@@ -116,8 +117,8 @@
   tr:last-child td{border-bottom:0}
   th.r,td.r{text-align:right}
   td.code{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
-  td .nm{font-weight:600}
-  td .spec{color:var(--muted);font-size:12px}
+  td .nm{font-weight:600;font-size:12.5px}
+  td .spec{color:var(--muted);font-size:10.5px}
 
   /* stock gauge — signature element */
   .gauge{display:flex;align-items:center;gap:10px;justify-content:flex-end}
@@ -212,10 +213,6 @@
   <section class="panel on" id="panel-dash">
     <div class="card value-card" id="valueCard"></div>
     <div class="stat-row" id="statRow"></div>
-    <div class="card alert-box">
-      <div class="alert-hd"><span class="dot"></span><b>안전재고 미달 품목</b><span class="count" id="alertCount">0</span></div>
-      <div id="alertBody"></div>
-    </div>
     <div class="toolbar" style="margin-bottom:10px">
       <h2 class="sec" style="margin:0">구성별 그래프 (색상별)</h2>
       <div class="filters" id="metricToggle" style="margin-left:auto">
@@ -224,8 +221,6 @@
       </div>
     </div>
     <div id="chartGrid"></div>
-    <h2 class="sec">전체 현재고</h2>
-    <div class="card"><div id="dashTable"></div></div>
   </section>
 
   <!-- ITEMS -->
@@ -622,12 +617,27 @@ function gaugeHTML(i){
 }
 
 /* ---------- DASHBOARD ---------- */
+const MAIN_MODELS=['F70','S82','M92'];
+const MAIN_LABEL={F70:'프레임(F70)', S82:'샤시(S82)', M92:'중간바(M92)'};
+function modelCode(i){
+  let lc=(i.linkCode||'').toUpperCase().replace(/[WB]$/,'');   // F70w/F70b → F70
+  if(lc) return lc;
+  const m=(i.name||'').match(/\(([A-Za-z]\d+)\)/);             // 이름의 (F70) 패턴
+  return m? m[1].toUpperCase() : '';
+}
+function chartName(i){   // 색상 표기를 뺀 전체 품명
+  return (i.name||'').replace(/,?\s*(아크릴블랙|화이트|deep black|white|블랙|black)\b/gi,'').replace(/[,\s]+$/,'').replace(/^[,\s]+/,'').trim() || (i.name||'');
+}
+function chartKey(i){    // 막대 묶음 키 = 표시 라벨
+  if(profileGroup(i)==='main') return MAIN_LABEL[modelCode(i)] || chartName(i);
+  return chartName(i);
+}
 function profileGroup(i){
   if(i.category==='보강재') return 'rebar';
   if(i.category!=='프로파일') return null;
   const n=i.name||'';
+  if(MAIN_MODELS.includes(modelCode(i)) && !/도어|오픈/.test(n)) return 'main'; // 프레임F70·샤시S82·중간바M92만
   if(/도어|오픈/.test(n)) return 'door';
-  if(/프레임|샤시|중간바/.test(n)) return 'main';
   return 'etc';
 }
 let chartMetric='qty';
@@ -637,9 +647,9 @@ const CHART_GROUPS=[
   {key:'etc',  title:'기타 프로파일'},
   {key:'rebar',title:'보강재'},
 ];
-function typeRank(t){
-  const order=['프레임','샤시','중간바','광폭중간바','프로젝트 샤시','더미바','연장바','지비','자유각','자유각 어댑터','90° 코너각','도어프레임','프레임 도어','외부오픈','내부오픈 도어샤시'];
-  const i=order.indexOf(t); return i<0?999:i;
+function chartKeyRank(k){
+  const order=['프레임(F70)','샤시(S82)','중간바(M92)'];
+  const i=order.indexOf(k); return i<0?999:i;
 }
 function shortWon(n){ n=Math.round(n||0);
   if(n>=1e8) return (n/1e8).toFixed(n%1e8?1:0)+'억';
@@ -657,7 +667,7 @@ function colChartCard(title, gkey, col, types, groupList, max){
   }
   let anyShort=false;
   const bars=types.map(t=>{
-    const sub=groupList.filter(i=>typeOf(i)===t && inCol(i));
+    const sub=groupList.filter(i=>chartKey(i)===t && inCol(i));
     const v=sub.reduce((s,i)=>s+metricVal(i),0);
     const short=sub.some(isShort); if(short) anyShort=true;
     const h=max>0?(v>0?Math.max(2,v/max*100):0):0;
@@ -677,14 +687,14 @@ function renderCharts(){
   const cards=[];
   CHART_GROUPS.forEach(g=>{
     const gl=items.filter(i=>profileGroup(i)===g.key);
-    const types=[...new Set(gl.map(typeOf))].sort((a,b)=>typeRank(a)-typeRank(b)||a.localeCompare(b,'ko'));
+    const types=[...new Set(gl.map(chartKey))].sort((a,b)=>chartKeyRank(a)-chartKeyRank(b)||a.localeCompare(b,'ko'));
     if(g.key==='rebar'){
-      let max=1; types.forEach(t=>{ const v=gl.filter(i=>typeOf(i)===t).reduce((s,i)=>s+metricVal(i),0); if(v>max)max=v; });
+      let max=1; types.forEach(t=>{ const v=gl.filter(i=>chartKey(i)===t).reduce((s,i)=>s+metricVal(i),0); if(v>max)max=v; });
       cards.push(colChartCard(g.title, g.key, null, types, gl, max));
     }else{
       let max=1;
       ['White','아크릴블랙'].forEach(col=>types.forEach(t=>{
-        const v=gl.filter(i=>colorOf(i)===col && typeOf(i)===t).reduce((s,i)=>s+metricVal(i),0);
+        const v=gl.filter(i=>colorOf(i)===col && chartKey(i)===t).reduce((s,i)=>s+metricVal(i),0);
         if(v>max) max=v;
       }));
       cards.push(colChartCard(g.title, g.key, 'White', types, gl, max));
@@ -695,7 +705,7 @@ function renderCharts(){
 }
 function openChartList(gkey, col, type){
   const g=CHART_GROUPS.find(x=>x.key===gkey);
-  const list=items.filter(i=>profileGroup(i)===gkey && (col==='ALL'||colorOf(i)===col) && typeOf(i)===type)
+  const list=items.filter(i=>profileGroup(i)===gkey && (col==='ALL'||colorOf(i)===col) && chartKey(i)===type)
     .sort((a,b)=>String(a.code).localeCompare(String(b.code)));
   $('#chartListTitle').innerHTML=`${g?esc(g.title):''}${col==='ALL'?'':' · '+esc(col)} · ${esc(type)}`;
   if(!list.length){ $('#chartListBody').innerHTML=`<div class="empty"><b>품목이 없습니다</b></div>`; }
@@ -738,50 +748,6 @@ function renderDash(){
     <div class="card stat ${low.length?'alert':''}"><div class="k">재고 부족</div><div class="v num">${low.length}</div></div>
     <div class="card stat"><div class="k"><span class="dot-c dot-white" style="display:inline-block;vertical-align:-1px;margin-right:4px"></span>White</div><div class="v num">${byColor('White')}</div></div>
     <div class="card stat"><div class="k"><span class="dot-c dot-black" style="display:inline-block;vertical-align:-1px;margin-right:4px"></span>아크릴블랙</div><div class="v num">${byColor('아크릴블랙')}</div></div>`;
-  $('#alertCount').textContent = low.length;
-  if(!low.length){
-    $('#alertBody').innerHTML = `<div class="empty"><b>모든 품목이 안전재고 이상입니다</b>부족한 품목이 생기면 여기에 표시됩니다.</div>`;
-  }else{
-    low.sort((a,b)=>(a.stock-a.safety)-(b.stock-b.safety));
-    $('#alertBody').innerHTML = `<table><thead><tr>
-        <th>품목</th><th>구분</th><th class="r">현재고</th><th class="r">안전</th><th class="r">부족분</th><th></th>
-      </tr></thead><tbody>` + low.map(i=>{
-      const need = Math.max(0, i.safety - i.stock);
-      return `<tr>
-        <td><div class="nm">${esc(i.name)}</div><div class="spec code">${esc(i.code)} · ${esc(i.spec||'')}</div></td>
-        <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
-        <td class="r num">${fmt(i.stock)}</td>
-        <td class="r num">${fmt(i.safety)}</td>
-        <td class="r num" style="color:var(--warn);font-weight:700">${need?('+'+fmt(need)):'-'}</td>
-        <td class="r"><span class="tag ${status(i)}">${statusKo(status(i))}</span></td>
-      </tr>`;
-    }).join('') + `</tbody></table>`;
-  }
-  // full stock table — 색상별로 묶어서 표시
-  if(!items.length){
-    $('#dashTable').innerHTML = emptyItems();
-  }else{
-    const order={'White':0,'아크릴블랙':1,'기타':2};
-    const sorted=[...items].sort((a,b)=>
-      (order[colorOf(a)]??9)-(order[colorOf(b)]??9) ||
-      a.category.localeCompare(b.category) || a.code.localeCompare(b.code));
-    $('#dashTable').innerHTML = `<table><thead><tr>
-      <th>품목코드</th><th>품명</th><th>구분</th><th>색상</th><th class="r">재고 / 안전</th><th class="r">금액</th><th class="r">상태</th>
-    </tr></thead><tbody>`+ sorted.map(i=>`<tr>
-        <td class="code">${esc(i.code)}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:10px">
-            ${i.thumb?`<img src="${i.thumb}" data-iview="${i.id}" title="단면도 크게 보기" style="width:38px;height:38px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;cursor:pointer;flex:none">`:''}
-            <div><div class="nm">${esc(i.name)}</div><div class="spec">${esc(i.spec||'')}</div></div>
-          </div>
-        </td>
-        <td><span class="chip ${catClass(i.category)}">${i.category}</span></td>
-        <td>${swatchHTML(i)}</td>
-        <td>${gaugeHTML(i)}</td>
-        <td class="r num">${i.priceM?fmtWon(itemValue(i)):'-'}</td>
-        <td class="r"><span class="tag ${status(i)}">${statusKo(status(i))}</span></td>
-      </tr>`).join('') + `</tbody></table>`;
-  }
 }
 
 /* ---------- ITEMS ---------- */
@@ -806,7 +772,7 @@ function itemColumns(){
     {th:'품명 / 규격', cls:'',     cell:nameCell},
     {th:'품목(연결)', cls:'link', opt:'linkName', cell:i=>i.linkName?`<span class="ln">${esc(i.linkName)}</span>`:dash},
     {th:'코드(연결)', cls:'link', opt:'linkCode', cell:i=>i.linkCode?esc(i.linkCode):dash},
-    {th:'현재고',     cls:'r',    cell:i=>`<input class="cell-input" type="number" min="0" data-estock="${i.id}" value="${i.stock}">`},
+    {th:'현재고',     cls:'r',    cell:i=>`<input class="cell-input stock" type="number" min="0" data-estock="${i.id}" value="${i.stock}">`},
     {th:'안전재고',   cls:'r',    opt:'safety', cell:i=>`<input class="cell-input" type="number" min="0" data-esafety="${i.id}" value="${i.safety}">`},
     {th:'단가',       cls:'r',    cell:i=>`<input class="cell-input" type="number" min="0" data-eprice="${i.id}" value="${i.priceM||0}"><span class="spec" style="font-size:10px">${isLengthUnit(i.unit)?' /m':' /'+esc(i.unit||'EA')}</span>`},
     {th:'금액',       cls:'r',    isValue:true, cell:i=>`<span class="num itemamt" data-amt="${i.id}" style="font-weight:600">${i.priceM?fmtWon(itemValue(i)):'-'}</span>`},
