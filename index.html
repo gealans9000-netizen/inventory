@@ -968,7 +968,7 @@ function renderHist(){
   const list=filteredHist();
   if(!list.length){ $('#histTable').innerHTML=`<div class="empty"><b>해당 이력이 없습니다</b></div>`; return; }
   $('#histTable').innerHTML = `<table><thead><tr>
-      <th>일시</th><th>유형</th><th>현장/메모</th><th>품목별 변동 (이전→이후)</th><th class="r">합계</th>
+      <th>일시</th><th>유형</th><th>현장/메모</th><th>품목별 변동 (이전→이후)</th><th class="r">합계</th><th></th>
     </tr></thead><tbody>`+ list.slice(0,150).map(h=>{
       const ty=HTYPE[h.type]||{ko:h.type,cls:''};
       const lines=(h.lines||[]).map(l=>{
@@ -984,6 +984,7 @@ function renderHist(){
         <td style="min-width:120px">${ref}${h.memo?esc(h.memo):''}</td>
         <td>${lines}</td>
         <td class="r num ${sum>=0?'delta-in':'delta-out'}">${sum>0?'+':''}${fmt(sum)}</td>
+        <td class="r"><button class="btn sm ghost" data-hdel="${h.id}" style="color:var(--warn)">삭제</button></td>
       </tr>`;
     }).join('') + `</tbody></table>`;
 }
@@ -1740,6 +1741,12 @@ function bind(){
   if($('#histSearch')) $('#histSearch').oninput=e=>{ histSearch=e.target.value.trim(); renderHist(); };
   if($('#histType')) $('#histType').onchange=e=>{ histType=e.target.value; renderHist(); };
   if($('#btnHistXlsx')) $('#btnHistXlsx').onclick=exportHistXlsx;
+  if($('#histTable')) $('#histTable').onclick=e=>{
+    const id=e.target.dataset.hdel; if(!id) return;
+    if(confirm('이 이력 줄을 삭제할까요?\n(기록만 지워지고 현재 재고 수량은 바뀌지 않습니다)')){
+      history=history.filter(h=>h.id!==id); saveHist(); renderHist();
+    }
+  };
   // modal close
   $$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.scrim').classList.remove('on'));
   // 편집/입력 모달은 배경 클릭으로 닫히지 않음. 도면 뷰어·차트 리스트는 배경 클릭으로 닫기.
