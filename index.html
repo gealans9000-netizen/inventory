@@ -104,6 +104,13 @@
   .cnt-input:focus{border-color:var(--teal);outline:none}
   .cnt-sum{flex:none;background:var(--teal);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer}
   .cnt-sum:active{transform:translateY(1px)}
+  .pchart{display:flex;align-items:flex-end;gap:10px;padding:22px 4px 0;border-bottom:2px solid var(--line);overflow-x:auto}
+  .pcol{flex:0 0 auto;min-width:46px;display:flex;flex-direction:column;align-items:center}
+  .pbars{height:110px;display:flex;align-items:flex-end;gap:3px}
+  .pbar{width:15px;border-radius:4px 4px 0 0;transition:height .3s}
+  .pbar.in{background:#7fb0a8}
+  .pbar.out{background:var(--warn)}
+  .plabel{margin-top:7px;font-size:10px;color:var(--muted);text-align:center;white-space:nowrap}
   @media(max-width:720px){ #chartGrid{grid-template-columns:1fr} }
   @media(max-width:460px){ .twocol{grid-template-columns:1fr 1fr;gap:8px} }
   .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -298,6 +305,22 @@
         <div class="row-actions" style="margin-top:14px"><button class="btn warn" id="btnOut">출고 등록</button></div>
       </div>
     </div>
+    <div class="toolbar" style="margin-bottom:8px">
+      <h2 class="sec" style="margin:0">기간별 변동 집계</h2>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <div class="filters" id="periodMetricToggle">
+          <button class="fbtn" data-pm="qty" aria-pressed="true">수량</button>
+          <button class="fbtn" data-pm="amt" aria-pressed="false">금액</button>
+        </div>
+        <div class="filters" id="periodToggle">
+          <button class="fbtn" data-period="day" aria-pressed="true">일별</button>
+          <button class="fbtn" data-period="week" aria-pressed="false">주별</button>
+          <button class="fbtn" data-period="month" aria-pressed="false">월별</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="periodPanel" style="margin-bottom:16px"></div>
+
     <div class="toolbar" style="margin-bottom:8px">
       <h2 class="sec" style="margin:0">재고 변동 이력</h2>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -950,6 +973,51 @@ function fillItemSelects(){
   $('#inItem').innerHTML = ph+opts;
   $('#outItem').innerHTML = ph+opts;
 }
+let periodMode='day', periodMetric='qty';
+function periodKey(ts, mode){
+  const d=new Date(ts); const p2=n=>String(n).padStart(2,'0');
+  if(mode==='month'){ const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}`; return {key,label:`${String(d.getFullYear()).slice(2)}.${p2(d.getMonth()+1)}`}; }
+  if(mode==='week'){ const wd=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-wd); mon.setHours(0,0,0,0);
+    const key=`${mon.getFullYear()}-${p2(mon.getMonth()+1)}-${p2(mon.getDate())}`; return {key,label:`${mon.getMonth()+1}/${mon.getDate()}~`}; }
+  const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`; return {key,label:`${d.getMonth()+1}/${d.getDate()}`};
+}
+function aggregatePeriods(mode){
+  const map=new Map();
+  filteredHist().forEach(h=>{
+    const pk=periodKey(h.ts,mode);
+    let b=map.get(pk.key); if(!b){ b={key:pk.key,label:pk.label,inQty:0,outQty:0,inAmt:0,outAmt:0,count:0}; map.set(pk.key,b); }
+    b.count++;
+    (h.lines||[]).forEach(l=>{ const dv=Number(l.delta)||0; const it=itemById(l.itemId); const amt=Math.abs(dv)*(it?unitCost(it):0);
+      if(dv>0){ b.inQty+=dv; b.inAmt+=amt; } else { b.outQty+=-dv; b.outAmt+=amt; } });
+  });
+  return [...map.values()].sort((a,b)=> a.key<b.key?-1:a.key>b.key?1:0);
+}
+function renderPeriod(){
+  if(!$('#periodPanel')) return;
+  const buckets=aggregatePeriods(periodMode);
+  if(!buckets.length){ $('#periodPanel').innerHTML=`<div class="empty"><b>집계할 이력이 없습니다</b>${history.length?'검색·유형 필터를 확인하세요.':''}</div>`; return; }
+  const amt=periodMetric==='amt';
+  const inV=b=>amt?b.inAmt:b.inQty, outV=b=>amt?b.outAmt:b.outQty;
+  const max=Math.max(1,...buckets.map(b=>Math.max(inV(b),outV(b))));
+  const bars=buckets.map(b=>{
+    const ih=inV(b)>0?Math.max(3,inV(b)/max*100):0, oh=outV(b)>0?Math.max(3,outV(b)/max*100):0;
+    const tip=`입고 +${fmt(b.inQty)} (${fmtWon(b.inAmt)}) / 출고·차감 -${fmt(b.outQty)} (${fmtWon(b.outAmt)})`;
+    return `<div class="pcol"><div class="pbars">
+      <div class="pbar in" style="height:${ih}%" title="${tip}"></div>
+      <div class="pbar out" style="height:${oh}%" title="${tip}"></div>
+    </div><div class="plabel">${esc(b.label)}</div></div>`;
+  }).join('');
+  const rows=[...buckets].reverse().map(b=>{ const net=b.inQty-b.outQty, netA=b.inAmt-b.outAmt;
+    return `<tr><td>${esc(b.label)}</td>
+      <td class="r"><div class="num delta-in">+${fmt(b.inQty)}</div><div class="spec" style="font-size:10.5px">+${fmtWon(b.inAmt)}</div></td>
+      <td class="r"><div class="num delta-out">-${fmt(b.outQty)}</div><div class="spec" style="font-size:10.5px">-${fmtWon(b.outAmt)}</div></td>
+      <td class="r"><div class="num ${net>=0?'delta-in':'delta-out'}">${net>=0?'+':''}${fmt(net)}</div><div class="spec" style="font-size:10.5px">${netA>=0?'+':''}${fmtWon(netA)}</div></td>
+      <td class="r num">${fmt(b.count)}</td></tr>`; }).join('');
+  $('#periodPanel').innerHTML=`
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px"><span style="color:#7fb0a8">■</span> 입고 &nbsp; <span style="color:var(--warn)">■</span> 출고·차감 <span style="margin-left:6px">· 막대 기준: <b>${amt?'금액':'수량'}</b></span></div>
+    <div class="pchart">${bars}</div>
+    <table style="margin-top:12px"><thead><tr><th>기간</th><th class="r">입고(+)</th><th class="r">출고·차감(−)</th><th class="r">순변동</th><th class="r">건수</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
 const HTYPE={in:{ko:'입고',cls:'ok'}, out:{ko:'출고',cls:'low'}, produce:{ko:'생산차감',cls:'low'}, audit:{ko:'실사·일괄',cls:'ok'}, adjust:{ko:'직접수정',cls:''}};
 let histSearch='', histType='all';
 function filteredHist(){
@@ -964,6 +1032,7 @@ function filteredHist(){
 function histDateStr(ts){ const d=new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function renderHist(){
   if(!$('#histTable')) return;
+  renderPeriod();
   if(!history.length){ $('#histTable').innerHTML=`<div class="empty"><b>재고 변동 이력이 없습니다</b>생산 차감·입출고·실사 시 자동으로 기록됩니다.</div>`; return; }
   const list=filteredHist();
   if(!list.length){ $('#histTable').innerHTML=`<div class="empty"><b>해당 이력이 없습니다</b></div>`; return; }
@@ -1741,6 +1810,14 @@ function bind(){
   if($('#histSearch')) $('#histSearch').oninput=e=>{ histSearch=e.target.value.trim(); renderHist(); };
   if($('#histType')) $('#histType').onchange=e=>{ histType=e.target.value; renderHist(); };
   if($('#btnHistXlsx')) $('#btnHistXlsx').onclick=exportHistXlsx;
+  $$('#periodToggle .fbtn').forEach(b=>b.onclick=()=>{
+    $$('#periodToggle .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); periodMode=b.dataset.period; renderPeriod();
+  });
+  $$('#periodMetricToggle .fbtn').forEach(b=>b.onclick=()=>{
+    $$('#periodMetricToggle .fbtn').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); periodMetric=b.dataset.pm; renderPeriod();
+  });
   if($('#histTable')) $('#histTable').onclick=e=>{
     const id=e.target.dataset.hdel; if(!id) return;
     if(confirm('이 이력 줄을 삭제할까요?\n(기록만 지워지고 현재 재고 수량은 바뀌지 않습니다)')){
