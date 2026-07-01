@@ -971,7 +971,20 @@ function periodKey(ts, mode){
     const key=`${mon.getFullYear()}-${p2(mon.getMonth()+1)}-${p2(mon.getDate())}`; return {key,label:`${mon.getMonth()+1}/${mon.getDate()}~`}; }
   const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`; return {key,label:`${d.getMonth()+1}/${d.getDate()}`};
 }
-function lineItem(l){ return itemById(l.itemId) || items.find(x=>String(x.code)===String(l.code)); }
+function normColor(c){ if(c==null||c==='') return null; const s=String(c).toLowerCase();
+  if(s.includes('black')||s.includes('블랙')||s.includes('아크릴')) return '아크릴블랙';
+  if(s.includes('white')||s.includes('화이트')) return 'White'; return c; }
+function lineItem(l){
+  // ① 품목ID 정확 매칭
+  if(l.itemId){ const b=itemById(l.itemId); if(b) return b; }
+  // ② 색상별 연결코드(F70w / F70b 등)
+  if(l.linkCode){ const bl=items.find(x=>x.linkCode && String(x.linkCode).toLowerCase()===String(l.linkCode).toLowerCase()); if(bl) return bl; }
+  // ③ 코드 + 색상(외부가 color를 남긴 경우: 블랙/화이트/black/white)
+  const lc=normColor(l.color);
+  if(lc){ const c=items.find(x=>String(x.code)===String(l.code) && colorOf(x)===lc); if(c) return c; }
+  // ④ 코드 첫 일치(색상 정보가 없으면 목록 순서상 위 품목)
+  return items.find(x=>String(x.code)===String(l.code));
+}
 function lineAmt(l){ const it=lineItem(l); return Math.abs(Number(l.delta)||0)*(it?unitCost(it):0); }
 function aggregatePeriods(mode){
   const map=new Map();
@@ -986,17 +999,18 @@ function aggregatePeriods(mode){
 }
 function renderPeriod(){
   if(!$('#periodPanel')) return;
-  // 필터된 이력에서 품목코드별 순변동 집계
-  const agg=new Map();
+  // 필터된 이력의 각 줄을 '한 품목'으로 해석해 순변동 집계 (같은 코드의 White/블랙 이중계상 방지)
+  const agg=new Map();   // itemId -> 순변동 합
   filteredHist().forEach(h=>(h.lines||[]).forEach(l=>{
-    const code=String(l.code); const cur=agg.get(code)||0; agg.set(code, cur+(Number(l.delta)||0));
+    const it=lineItem(l); if(!it) return;
+    agg.set(it.id, (agg.get(it.id)||0)+(Number(l.delta)||0));
   }));
   if(!agg.size){ $('#periodPanel').innerHTML=`<div class="empty"><b>표시할 이력이 없습니다</b>${history.length?'검색·유형 필터를 확인하세요.':''}</div>`; return; }
   // 품목 탭 순서대로, 변동이 있는 품목만 표시
   let tUsedQ=0,tUsedA=0,tRemQ=0,tRemA=0; const rows=[];
   items.forEach(it=>{
-    if(!agg.has(String(it.code))) return;
-    const net=agg.get(String(it.code));        // 음수면 차감(사용)
+    if(!agg.has(it.id)) return;
+    const net=agg.get(it.id);                    // 음수면 차감(사용)
     const usedQ=-net;                            // 사용(차감) 수량(양수)
     const uc=unitCost(it), usedA=usedQ*uc;
     const remQ=Number(it.stock)||0, remA=itemValue(it);
@@ -1049,7 +1063,9 @@ function renderHist(){
       const lines=(h.lines||[]).map(l=>{
         const cls=l.delta>0?'delta-in':'delta-out';
         const ba=(l.before!=null&&l.after!=null)?` <span class="spec" style="font-size:11px">(${fmt(l.before)}→${fmt(l.after)})</span>`:'';
-        return `<div class="hist-line"><b>${esc(l.name)}</b> <span class="code">${esc(l.code)}</span> <span class="${cls}">${l.delta>0?'+':''}${fmt(l.delta)}</span>${ba}</div>`;
+        const it=lineItem(l); const c=it?colorOf(it):null;
+        const dot=c?`<span class="dot-c ${c==='White'?'dot-white':c==='아크릴블랙'?'dot-black':'dot-other'}" style="display:inline-block;vertical-align:-1px;margin-right:3px"></span>`:'';
+        return `<div class="hist-line">${dot}<b>${esc(l.name)}</b> <span class="code">${esc(l.code)}</span> <span class="${cls}">${l.delta>0?'+':''}${fmt(l.delta)}</span>${ba}</div>`;
       }).join('');
       const sum=(h.lines||[]).reduce((s,l)=>s+(l.delta||0),0);
       const amtSum=(h.lines||[]).reduce((s,l)=>s+((Number(l.delta)||0)>0?lineAmt(l):-lineAmt(l)),0);
