@@ -981,13 +981,15 @@ function periodKey(ts, mode){
     const key=`${mon.getFullYear()}-${p2(mon.getMonth()+1)}-${p2(mon.getDate())}`; return {key,label:`${mon.getMonth()+1}/${mon.getDate()}~`}; }
   const key=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`; return {key,label:`${d.getMonth()+1}/${d.getDate()}`};
 }
+function lineItem(l){ return itemById(l.itemId) || items.find(x=>String(x.code)===String(l.code)); }
+function lineAmt(l){ const it=lineItem(l); return Math.abs(Number(l.delta)||0)*(it?unitCost(it):0); }
 function aggregatePeriods(mode){
   const map=new Map();
   filteredHist().forEach(h=>{
     const pk=periodKey(h.ts,mode);
     let b=map.get(pk.key); if(!b){ b={key:pk.key,label:pk.label,inQty:0,outQty:0,inAmt:0,outAmt:0,count:0}; map.set(pk.key,b); }
     b.count++;
-    (h.lines||[]).forEach(l=>{ const dv=Number(l.delta)||0; const it=itemById(l.itemId); const amt=Math.abs(dv)*(it?unitCost(it):0);
+    (h.lines||[]).forEach(l=>{ const dv=Number(l.delta)||0; const amt=lineAmt(l);
       if(dv>0){ b.inQty+=dv; b.inAmt+=amt; } else { b.outQty+=-dv; b.outAmt+=amt; } });
   });
   return [...map.values()].sort((a,b)=> a.key<b.key?-1:a.key>b.key?1:0);
@@ -1046,13 +1048,14 @@ function renderHist(){
         return `<div class="hist-line"><b>${esc(l.name)}</b> <span class="code">${esc(l.code)}</span> <span class="${cls}">${l.delta>0?'+':''}${fmt(l.delta)}</span>${ba}</div>`;
       }).join('');
       const sum=(h.lines||[]).reduce((s,l)=>s+(l.delta||0),0);
+      const amtSum=(h.lines||[]).reduce((s,l)=>s+((Number(l.delta)||0)>0?lineAmt(l):-lineAmt(l)),0);
       const ref = h.ref?`<span class="tag" style="background:var(--line2);color:var(--ink)">${esc(h.ref)}</span> `:'';
       return `<tr>
         <td class="code" style="white-space:nowrap">${histDateStr(h.ts)}</td>
         <td><span class="tag ${ty.cls}">${ty.ko}</span></td>
         <td style="min-width:120px">${ref}${h.memo?esc(h.memo):''}</td>
         <td>${lines}</td>
-        <td class="r num ${sum>=0?'delta-in':'delta-out'}">${sum>0?'+':''}${fmt(sum)}</td>
+        <td class="r"><div class="num ${sum>=0?'delta-in':'delta-out'}">${sum>0?'+':''}${fmt(sum)}</div><div class="spec" style="font-size:10.5px">${amtSum>=0?'+':''}${fmtWon(amtSum)}</div></td>
         <td class="r"><button class="btn sm ghost" data-hdel="${h.id}" style="color:var(--warn)">삭제</button></td>
       </tr>`;
     }).join('') + `</tbody></table>`;
@@ -1061,11 +1064,12 @@ function exportHistXlsx(){
   if(!window.XLSX){ toast('엑셀 모듈을 불러오지 못했습니다'); return; }
   const list=filteredHist();
   if(!list.length){ toast('내보낼 이력이 없습니다'); return; }
-  const aoa=[['일시','유형','현장/메모','품목코드','품명','변동','이전','이후']];
+  const aoa=[['일시','유형','현장/메모','품목코드','품명','변동','이전','이후','금액']];
   list.forEach(h=>{ const ty=(HTYPE[h.type]||{}).ko||h.type; const memo=[h.ref,h.memo].filter(Boolean).join(' · ');
-    (h.lines||[]).forEach(l=>aoa.push([new Date(h.ts).toLocaleString('ko-KR'),ty,memo,l.code,l.name,l.delta,l.before!=null?l.before:'',l.after!=null?l.after:''])); });
+    (h.lines||[]).forEach(l=>{ const dv=Number(l.delta)||0; const amt=Math.round((dv>0?1:-1)*lineAmt(l));
+      aoa.push([new Date(h.ts).toLocaleString('ko-KR'),ty,memo,l.code,l.name,l.delta,l.before!=null?l.before:'',l.after!=null?l.after:'',amt]); }); });
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:18},{wch:10},{wch:22},{wch:12},{wch:26},{wch:8},{wch:8},{wch:8}];
+  ws['!cols']=[{wch:18},{wch:10},{wch:24},{wch:12},{wch:26},{wch:8},{wch:8},{wch:8},{wch:12}];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'재고이력');
   XLSX.writeFile(wb,`S9000_재고이력_${todayISO()}.xlsx`);
 }
